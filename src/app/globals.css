@@ -1,0 +1,370 @@
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --color-hero-bg: #000000;
+  --color-beige-bg: #f4f1ea;
+  --color-text-main: #333333;
+  --color-accent: #2e8b8b;
+  /* Turquesa aproximado */
+  --font-main: 'Arial', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  font-family: var(--font-main);
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+/* Utilitarios */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.btn-primary {
+  display: inline-block;
+  padding: 12px 30px;
+  background-color: var(--color-foreground);
+  color: white;
+  text-decoration: none;
+  border: 1px solid transparent;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background-color: transparent;
+  color: var(--color-foreground);
+  /* Asume contexto claro */
+  border-color: var(--color-foreground);
+}
+
+/* Placeholders para Imágenes */
+.placeholder-box {
+  background-color: #cccccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666666;
+  font-size: 2rem;
+  font-weight: bold;
+  border: 2px dashed #999;
+  min-height: 200px;
+  width: 100%;
+  position: relative;
+  transition: transform 0.3s ease;
+}
+
+.placeholder-box:hover {
+  transform: scale(1.02);
+  background-color: #bbbbbb;
+}
+
+.placeholder-box span {
+  background: rgba(255, 255, 255, 0.8);
+  padding: 10px 20px;
+  border-radius: 4px;
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+/* --- Header --- */
+.site-header {
+  width: 100%;
+  padding: 1rem 0;
+  background-color: rgba(255, 255, 255, 0.9);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(5px);
+}
+
+.header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.logo-container {
+  width: 180px;
+  height: 48px;
+}
+
+.main-nav {
+  display: none;
+  gap: 2rem;
+}
+
+@media (min-width: 768px) {
+  .main-nav {
+    display: flex;
+  }
+}
+
+.nav-link {
+  text-decoration: none;
+  color: var(--color-text-main);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  transition: color 0.3s;
+}
+
+.nav-link:hover {
+  color: var(--color-accent);
+}
+
+/* --- Hero Section --- */
+.hero-section {
+  background-color: var(--color-hero-bg);
+  color: white;
+  padding: 5rem 0;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero-title {
+  font-size: 2.5rem;
+  font-weight: 300;
+  text-align: center;
+  margin-bottom: 4rem;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.2;
+}
+
+@media (min-width: 768px) {
+  .hero-title {
+    font-size: 3.5rem;
+  }
+}
+
+/* Hero Grid */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .hero-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .hero-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.hero-item {
+  width: 100%;
+  aspect-ratio: 3/4;
+}
+
+.item-2,
+.item-4 {
+  margin-top: 2rem;
+  /* Efecto escalonado */
+}
+
+@media (max-width: 767px) {
+
+  .item-2,
+  .item-4 {
+    margin-top: 0;
+  }
+}
+
+/* --- Value Section --- */
+.value-section {
+  background-color: var(--color-beige-bg);
+  padding: 6rem 0;
+  text-align: center;
+}
+
+.value-container {
+  max-width: 768px;
+  margin: 0 auto;
+}
+
+.section-title {
+  font-size: 2rem;
+  font-weight: 400;
+  margin-bottom: 1.5rem;
+  color: var(--color-text-main);
+}
+
+.section-desc {
+  color: #666;
+  margin-bottom: 2.5rem;
+  line-height: 1.6;
+}
+
+/* --- Gallery Section --- */
+.gallery-section {
+  padding: 1rem 0;
+  background-color: white;
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .gallery-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.gallery-item {
+  width: 100%;
+  aspect-ratio: 4/3;
+}
+
+/* --- Footer --- */
+.site-footer {
+  background-color: var(--color-beige-bg);
+  padding: 4rem 0;
+  border-top: 1px solid #e5e5e5;
+}
+
+.footer-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3rem;
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .footer-container {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.footer-logo {
+  display: flex;
+  justify-content: center;
+}
+
+@media (min-width: 768px) {
+  .footer-logo {
+    justify-content: flex-start;
+  }
+}
+
+.footer-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+@media (min-width: 768px) {
+  .footer-links {
+    flex-direction: row;
+    justify-content: center;
+  }
+}
+
+.footer-newsletter {
+  background-color: white;
+  padding: 1.5rem;
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.newsletter-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #999;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.newsletter-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.newsletter-input {
+  flex: 1;
+  background-color: #f9f9f9;
+  border: 1px solid #e5e5e5;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.newsletter-input:focus {
+  outline: none;
+  border-color: black;
+}
+
+.newsletter-btn {
+  background-color: black;
+  color: white;
+  padding: 0 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.newsletter-btn:hover {
+  background-color: var(--color-accent);
+}
+
+/* --- Placeholders Specifics --- */
+.logo-placeholder {
+  font-size: 0.9rem !important;
+  border: 1px dashed #ccc;
+  background-color: #f0f0f0;
+}
+
+.dark-placeholder {
+  background-color: #333 !important;
+  color: #fff !important;
+  border-color: #555 !important;
+}
+
+.dark-placeholder span {
+  background: rgba(0, 0, 0, 0.5) !important;
+}
