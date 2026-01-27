@@ -135,8 +135,6 @@ export default function Home() {
           <Link href="/catalogo" className="btn-turquoise" aria-label="Ver catálogo de productos premium">
             Ver Catálogo
           </Link>
-          {/* Rectángulo verde de prueba solicitado por el usuario */}
-          <div style={{ width: '150px', height: '40px', backgroundColor: '#00d4bd', marginTop: '20px', borderRadius: '4px' }}></div>
         </div>
       </section>
 
