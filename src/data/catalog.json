@@ -8,6 +8,12 @@
       "Ecorresponsable"
     ],
     "image": "https://images-cdn.zecat.cl/generic_products/BoligrafoGoldenMetal01-1729453255.webp",
+    "images": [
+      "https://images-cdn.zecat.cl/generic_products/Boligrafo04Verde-03jpg-1683060035.jpg",
+      "https://images-cdn.zecat.cl/generic_products/jz46k9eoopk-1761250662.webp",
+      "https://images-cdn.zecat.cl/generic_products/pvsmw4maohg-1753730844.webp",
+      "https://images-cdn.zecat.cl/generic_products/0vuxbzcl3qdo-1761848436.webp"
+    ],
     "category": "Bolígrafos",
     "wholesaler": "Zecat Premium"
   },
@@ -32,6 +38,10 @@
       "Ecorresponsable"
     ],
     "image": "https://images-cdn.zecat.cl/generic_products/jz46k9eoopk-1761250662.webp",
+    "images": [
+      "https://images-cdn.zecat.cl/generic_products/BoligrafoGoldenMetal01-1729453255.webp",
+      "https://images-cdn.zecat.cl/generic_products/Boligrafo04Verde-03jpg-1683060035.jpg"
+    ],
     "category": "Bolígrafos",
     "wholesaler": "Zecat Premium"
   },
@@ -2924,6 +2934,10 @@
       "Ecorresponsable"
     ],
     "image": "https://images-cdn.zecat.cl/generic_products/BotellaPasadenaBlanco2-1729443302.webp",
+    "images": [
+      "https://images-cdn.zecat.cl/generic_products/BotellaPasadenaLila-1729443302.webp",
+      "https://images-cdn.zecat.cl/generic_products/BotellaPasadenaAqua-1729443302.webp"
+    ],
     "category": "Botellas",
     "wholesaler": "Zecat Premium"
   },
