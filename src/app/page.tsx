@@ -149,13 +149,30 @@ export default function Home() {
   }, []);
 
 
-  const handleDrop = (e: React.DragEvent, key: string) => {
+  const handleDrop = async (e: React.DragEvent, blockId: string) => {
     e.preventDefault();
     const url = e.dataTransfer.getData('image_url');
-    if (url) {
-      const newAssets = { ...assets, [key]: url };
-      setAssets(newAssets);
-      localStorage.setItem('ecomoving_assets', JSON.stringify(newAssets));
+    if (!url) return;
+
+    // 1. Actualización Local inmediata
+    const newAssets = { ...assets, [blockId]: url };
+    setAssets(newAssets);
+    localStorage.setItem('ecomoving_assets', JSON.stringify(newAssets));
+
+    // 2. Sincronización con Supabase (Persistencia Real)
+    // Buscamos a qué sección pertenece este bloque
+    const updatedSections = activeContent.sections.map(section => {
+      const hasBlock = section.blocks?.some(b => b.id === blockId);
+      if (!hasBlock) return section;
+
+      return {
+        ...section,
+        blocks: section.blocks.map(b => b.id === blockId ? { ...b, image: url } : b)
+      };
+    });
+
+    if (JSON.stringify(updatedSections) !== JSON.stringify(activeContent.sections)) {
+      await updateSection('sections', updatedSections);
     }
   };
 
