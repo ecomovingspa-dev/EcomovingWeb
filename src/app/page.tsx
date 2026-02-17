@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers } from 'lucide-react';
+import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers, Rocket, Send } from 'lucide-react';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
 import { useWebContent, SectionContent, GridCell, DynamicSection, WebContent } from '@/hooks/useWebContent';
 import EditorSEO from '@/components/EditorSEO';
@@ -10,6 +10,18 @@ import BibliotecaIA from '@/components/BibliotecaIA';
 import CatalogHub from '@/components/CatalogHub';
 import VisualGallery from '@/components/VisualGallery';
 import SectionComposer from '@/components/SectionComposer';
+import ProjectLauncher from '@/components/ProjectLauncher';
+import ExportModal from '@/components/ExportModal';
+
+interface Project {
+  id: string;
+  name: string;
+  repo: string;
+  path: string;
+  lastExport: string;
+  type: 'public' | 'internal';
+  status: 'online' | 'ready';
+}
 
 const BentoBlock = ({ block, designMode, assets, handleDrop }: {
   block: any,
@@ -121,6 +133,7 @@ export default function Home() {
   });
 
   const { content, loading: contentLoading, refetch: refetchContent, updateSection } = useWebContent();
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [previewContent, setPreviewContent] = useState<WebContent | null>(null);
   const activeContent = previewContent || content;
 
@@ -128,6 +141,7 @@ export default function Home() {
   const [isBibliotecaOpen, setIsBibliotecaOpen] = useState(false);
   const [isCatalogHubOpen, setIsCatalogHubOpen] = useState(false);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [designMode, setDesignMode] = useState(false);
 
   const handleComposerChange = useCallback((newSections: DynamicSection[]) => {
@@ -148,19 +162,15 @@ export default function Home() {
     if (saved) setAssets(JSON.parse(saved));
   }, []);
 
-
   const handleDrop = async (e: React.DragEvent, blockId: string) => {
     e.preventDefault();
     const url = e.dataTransfer.getData('image_url');
     if (!url) return;
 
-    // 1. Actualización Local inmediata
     const newAssets = { ...assets, [blockId]: url };
     setAssets(newAssets);
     localStorage.setItem('ecomoving_assets', JSON.stringify(newAssets));
 
-    // 2. Sincronización con Supabase (Persistencia Real)
-    // Buscamos a qué sección pertenece este bloque
     const updatedSections = activeContent.sections.map(section => {
       const hasBlock = section.blocks?.some(b => b.id === blockId);
       if (!hasBlock) return section;
@@ -176,15 +186,37 @@ export default function Home() {
     }
   };
 
-  // Renderizado de Sección Dinámica Ultra-Premium (Super Tool)
+  const sections = useMemo(() => {
+    const raw = activeContent.sections;
+    const array = Array.isArray(raw) ? raw : (typeof raw === 'object' ? Object.values(raw) : []);
+
+    const categoryOrder = [
+      'ECOLOGICOS',
+      'BOTELLAS, MUG Y TAZAS',
+      'CUADERNOS, LIBRETAS Y MEMO SET',
+      'MOCHILAS, BOLSOS Y MORRALES',
+      'BOLÍGRAFOS',
+      'ACCESORIOS'
+    ];
+
+    return [...array].sort((a: any, b: any) => {
+      const indexA = categoryOrder.findIndex(cat => (a.title1 || a.title || '').toUpperCase().includes(cat));
+      const indexB = categoryOrder.findIndex(cat => (b.title1 || b.title || '').toUpperCase().includes(cat));
+
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+
+      return (a.order || 0) - (b.order || 0);
+    });
+  }, [activeContent.sections]);
+
   const renderDynamicSection = (section: any) => {
-    // Detectamos el color predominante de la sección (el primer bloque con color o el color del título)
     const sectionAccent = section.blocks?.find((b: any) => b.bgColor)?.bgColor || section.titleColor || '#00d4bd';
 
     return (
       <section key={section.id} id={section.id} style={{ background: section.bgColor || '#000', padding: '120px 0', overflow: 'hidden' }}>
         <div className='container'>
-          {/* Cabecera Editorial con Animación */}
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -202,7 +234,6 @@ export default function Home() {
               display: 'inline-block'
             }}>
               {section.title1}
-              {/* Línea decorativa sincronizada con el color de la sección */}
               <div style={{
                 position: 'absolute',
                 bottom: '-15px',
@@ -250,7 +281,6 @@ export default function Home() {
             </div>
           </motion.div>
 
-          {/* Grilla Maestro 24x4 */}
           <div style={{
             display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gridAutoRows: 'minmax(75px, auto)',
             gap: '10px', position: 'relative', padding: '20px',
@@ -292,32 +322,11 @@ export default function Home() {
     );
   };
 
-  const sections = useMemo(() => {
-    const raw = activeContent.sections;
-    const array = Array.isArray(raw) ? raw : (typeof raw === 'object' ? Object.values(raw) : []);
-
-    const categoryOrder = [
-      'ECOLOGICOS',
-      'BOTELLAS, MUG Y TAZAS',
-      'CUADERNOS, LIBRETAS Y MEMO SET',
-      'MOCHILAS, BOLSOS Y MORRALES',
-      'BOLÍGRAFOS',
-      'ACCESORIOS'
-    ];
-
-    return [...array].sort((a: any, b: any) => {
-      const indexA = categoryOrder.findIndex(cat => (a.title1 || a.title || '').toUpperCase().includes(cat));
-      const indexB = categoryOrder.findIndex(cat => (b.title1 || b.title || '').toUpperCase().includes(cat));
-
-      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-      if (indexA !== -1) return -1;
-      if (indexB !== -1) return 1;
-
-      return (a.order || 0) - (b.order || 0);
-    });
-  }, [activeContent.sections]);
-
   if (contentLoading) return <div className='loading-screen'>ECOMOVING SPA</div>;
+
+  if (!selectedProject) {
+    return <ProjectLauncher onSelect={(p) => setSelectedProject(p)} />;
+  }
 
   return (
     <main style={{ backgroundColor: '#050505', color: 'white', minHeight: '100vh' }}>
@@ -335,10 +344,14 @@ export default function Home() {
           <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img" />
         </div>
         <div className='nav-actions' style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={() => setSelectedProject(null)} className='nav-btn' style={{ background: 'rgba(255,100,100,0.1)', color: '#ff6b6b' }}><Rocket size={16} /> SALIR</button>
           <button onClick={() => setIsCatalogHubOpen(true)} className='nav-btn'><Layout size={16} /> HUB</button>
           <button onClick={() => setIsBibliotecaOpen(true)} className='nav-btn'><ImageIcon size={16} /> IA</button>
           <button onClick={() => setIsComposerOpen(true)} className='nav-btn'><Layers size={16} /> COMPOSER</button>
           <button onClick={() => setIsEditorSEOOpen(true)} className='nav-btn'><FileText size={16} /> SEO</button>
+          {selectedProject.type === 'public' && (
+            <button onClick={() => setIsExportModalOpen(true)} className='nav-btn' style={{ background: 'var(--accent-gold)11', color: 'var(--accent-gold)', borderColor: 'var(--accent-gold)33' }}><Send size={16} /> PREPARAR EXPORTACIÓN</button>
+          )}
           <button onClick={() => setDesignMode(!designMode)} className='nav-btn'><Crop size={16} /> {designMode ? 'VISTA FINAL' : 'DISEÑO'}</button>
         </div>
       </nav>
@@ -396,6 +409,11 @@ export default function Home() {
       <EditorSEO isOpen={isEditorSEOOpen} onClose={() => setIsEditorSEOOpen(false)} onContentUpdate={refetchContent} />
       {isBibliotecaOpen && <BibliotecaIA onClose={() => setIsBibliotecaOpen(false)} />}
       <CatalogHub isOpen={isCatalogHubOpen} onClose={() => setIsCatalogHubOpen(false)} />
+      <ExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        project={selectedProject}
+      />
 
       <style jsx global>{`
         .nav-master {
