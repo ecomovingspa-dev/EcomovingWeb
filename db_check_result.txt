@@ -1,0 +1,77 @@
+Contenido actual en web_contenido:
+--- Sección: hero ---
+{
+  "title": "REGALOS CORPORATIVOS",
+  "cta_link": "/catalogo",
+  "cta_text": "Ver Catálogo",
+  "subtitle": "Arte en Movimiento",
+  "background_image": ""
+}
+----------------------------
+--- Sección: mugs ---
+{
+  "cells": [
+    {
+      "id": "mug_split_1",
+      "span": "2x2",
+      "image": "",
+      "label": "Executive Series"
+    },
+    {
+      "id": "mug_split_2",
+      "span": "row-2",
+      "image": "",
+      "label": "Mate Finish"
+    },
+    {
+      "id": "mug_split_3",
+      "span": "1x1",
+      "image": "",
+      "label": "Colors"
+    }
+  ],
+  "title": "Colección Mugs Premium",
+  "title_2": "",
+  "cta_link": "/catalogo",
+  "cta_text": "Ver Catálogo",
+  "subtitle": "",
+  "description": "Mugs promocionales premium Ecomoving: ingeniería de doble pared y diseños excepcionales para regalos corporativos que impactan. Ofrece una experiencia memorable con cada sorbo, un obsequio que tus clientes y empleados apreciarán genuinamente.",
+  "description_2": "Cada mug en nuestra colección es seleccionado por su balance entre ingeniería térmica y tacto premium."
+}
+----------------------------
+--- Sección: botellas ---
+{
+  "title": "Hidratación de Lujo",
+  "title_2": "",
+  "subtitle": "",
+  "description": "Botellas de acero inoxidable premium para regalos corporativos. Aislamiento térmico superior, ideales para merchandising empresarial de alta calidad.",
+  "description_2": "Tecnología de aislamiento al vacío que mantiene la temperatura por más de 24 horas."
+}
+----------------------------
+--- Sección: libretas ---
+{
+  "title": "Libretas Corporativas Premium",
+  "title_2": "",
+  "cta_link": "/catalogo?category=libretas",
+  "cta_text": "Ver Cuadernos",
+  "subtitle": "",
+  "description": "Libretas corporativas premium Ecomoving: Acabados italianos para inspirar ideas duraderas. Encuentra el regalo empresarial perfecto: cuadernos personalizados para tus clientes y empleados.",
+  "description_2": "En un mundo digital, la escritura táctil recupera su valor estratégico. Calidad italiana para proyectos que perduran."
+}
+----------------------------
+--- Sección: mochilas ---
+{
+  "title": "Mochilas y Bolsos",
+  "title_2": "",
+  "cta_link": "/catalogo?category=mochilas",
+  "cta_text": "Ver Colección",
+  "subtitle": "",
+  "description": "Diseño ergonómico y compartimentos inteligentes. La elegancia se une a la funcionalidad para el profesional moderno.",
+  "description_2": "Mochilas corporativas premium, diseñadas para el profesional moderno. Organización inteligente y ergonomía superior, ideales para regalar a tus empleados o clientes y potenciar la imagen de tu marca."
+}
+----------------------------
+--- Sección: sections ---
+Total items (array): 2
+  Item ID: section_1770856178934, Title: Ecomoving: Regalos Corporativos Exclusivos Chile, Blocks: 4
+  Item ID: section_1770864212341, Title: NUEVA SECCIÓN SEO, Blocks: 1
+----------------------------

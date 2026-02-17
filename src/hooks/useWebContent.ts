@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export interface HeroContent {
-    title: string;
-    subtitle: string;
+    title1: string;
+    paragraph1: string;
     cta_text: string;
     cta_link: string;
     background_image: string;
@@ -25,23 +25,42 @@ export interface LayoutBlock {
     textContent?: string;
     bgColor?: string;
     textColor?: string;
+    textAlign?: 'left' | 'center' | 'right' | 'justify';
     span: string; // formato "ancho x alto" ej: "4x2"
     col: number;  // 1-12
     row: number;  // 1-5
     zIndex: number; // Para traslapes
     alt_text?: string;
+    // Propiedades Avanzadas (Super Tool)
+    opacity?: number;       // 0-1
+    borderRadius?: string;  // ej: "20px"
+    blur?: string;          // ej: "10px"
+    shadow?: 'none' | 'soft' | 'strong' | 'neon';
+    gradient?: boolean;
+    isCircle?: boolean;
+    writingMode?: 'horizontal-tb' | 'vertical-rl' | 'vertical-lr';
+    fontSize?: string; // ej: "2rem"
+    gallery?: string[]; // Para diapositivas dentro del bloque
 }
 
 export interface DynamicSection {
     id: string;
     order: number;
-    subtitle?: string;    // Subtítulo Estratégico (Etiqueta superior)
-    title: string;       // Título 1
-    description: string; // Descripción 1
-    title_2?: string;    // Título 2
-    description_2?: string; // Descripción 2
+    subtitle?: string;    // Etiqueta superior opcional
+    title1: string;       // Título principal
+    paragraph1: string;   // Descripción principal
+    title2?: string;      // Título secundario opcional
+    paragraph2?: string;  // Descripción secundaria opcional
     blocks: LayoutBlock[];
     bgColor: string;
+    titleColor?: string;
+    titleSize?: string; // ej: "4.5rem"
+    descColor?: string;
+    descSize?: string;
+    descAlign?: 'left' | 'center' | 'right' | 'justify';
+    descCol?: number;   // 1-24
+    descSpan?: number;  // 1-24
+    gallery?: string[];
     seo_keywords?: string;
 }
 
@@ -56,10 +75,10 @@ export interface GridCell {
 }
 
 export interface SectionContent {
-    title: string;
-    description: string;
-    description_2?: string;
-    title_2?: string;
+    title1: string;
+    paragraph1: string;
+    title2?: string;
+    paragraph2?: string;
     cells?: GridCell[];
     cta_text: string;
     cta_link: string;
@@ -73,28 +92,18 @@ export interface SectionContent {
 export interface WebContent {
     hero: HeroContent;
     sections: DynamicSection[];
+    [key: string]: any;
 }
 
 const defaultContent: WebContent = {
     hero: {
-        title: 'ECOMOVING: MERCHANDISING SUSTENTABLE Y DISEÑO PREMIUM',
-        subtitle: 'Elevamos tu marca con productos corporativos de alto impacto y conciencia ecológica.',
+        title1: 'ECOMOVING: MERCHANDISING SUSTENTABLE Y DISEÑO PREMIUM',
+        paragraph1: 'Elevamos tu marca con productos corporativos de alto impacto y conciencia ecológica.',
         cta_text: 'EXPLORAR CATÁLOGO 2026',
         cta_link: '/catalogo',
         background_image: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?q=80&w=2013&auto=format&fit=crop',
     },
-    sections: [
-        {
-            id: 'section_mugs',
-            order: 1,
-            title: 'MUGS PERSONALIZADOS Y TAZAS CORPORATIVAS PREMIUM',
-            title_2: 'CURATORÍA DE MATERIALES',
-            description: 'Descubre nuestra línea de mugs cerámicos y térmicos con acabados de alta gama.',
-            description_2: 'Cada mug es seleccionado por su balance entre ingeniería térmica y tacto premium.',
-            bgColor: '#050505',
-            blocks: []
-        }
-    ]
+    sections: []
 };
 
 export function useWebContent() {
@@ -114,26 +123,48 @@ export function useWebContent() {
                 return;
             }
 
-            if (data && data.length > 0) {
-                const newContent = { ...defaultContent };
+            console.log(`[useWebContent] Filas obtenidas: ${data?.length || 0}`);
 
+            if (data && data.length > 0) {
+                const newContent: WebContent = { ...defaultContent };
+                const extraSections: Record<string, any> = {};
+
+                // 1. Primero procesamos las filas maestras (hero y sections)
                 data.forEach((row) => {
-                    const sectionName = row.section as keyof WebContent;
-                    if (sectionName in newContent) {
-                        if (sectionName === 'sections') {
-                            // Garantizar que 'sections' siempre sea un array
-                            const rawData = row.content;
-                            (newContent as any).sections = Array.isArray(rawData) ? rawData :
-                                (typeof rawData === 'object' ? Object.values(rawData) : []);
-                        } else {
-                            // Si es un objeto (como 'hero'), lo mezclamos
-                            newContent[sectionName] = {
-                                ...(newContent[sectionName] as any),
-                                ...(row.content as any)
-                            };
-                        }
+                    const sectionName = row.section;
+                    if (sectionName === 'hero') {
+                        newContent.hero = { ...newContent.hero, ...(row.content as any) };
+                    } else if (sectionName === 'sections') {
+                        const rawData = row.content;
+                        newContent.sections = Array.isArray(rawData) ? rawData :
+                            (typeof rawData === 'object' ? Object.values(rawData) : []);
+                    } else {
+                        // Guardamos las secciones extra (mugs, botellas, etc.) en el objeto principal y para procesar galerías
+                        const key = sectionName.toLowerCase();
+                        extraSections[key] = row.content;
+                        newContent[key] = row.content;
                     }
                 });
+
+                // 2. Fusionar galerías de secciones extra en el array de secciones dinámicas
+                if (newContent.sections.length > 0) {
+                    newContent.sections = newContent.sections.map(s => {
+                        const titleLower = (s.title1 || (s as any).title || '').toLowerCase();
+                        const idLower = (s.id || '').toLowerCase();
+
+                        // Buscamos si alguna de las claves extra (mugs, botellas...) está en el título o ID
+                        const foundKey = Object.keys(extraSections).find(key =>
+                            titleLower.includes(key) || idLower.includes(key)
+                        );
+
+                        const extra = foundKey ? extraSections[foundKey] : null;
+
+                        if (extra && extra.gallery && Array.isArray(extra.gallery)) {
+                            return { ...s, gallery: extra.gallery };
+                        }
+                        return s;
+                    });
+                }
 
                 setContent(newContent);
             }

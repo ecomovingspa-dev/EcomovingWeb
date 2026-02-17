@@ -53,20 +53,14 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
     const SECTION_LABELS: Record<string, string> = {
         hero: 'Hero',
         sections: 'Secciones Dinámicas',
-        mugs: 'Mug',
-        botellas: 'Botellas',
-        libretas: 'Cuadernos y Libretas',
-        mochilas: 'Mochilas y Bolsos',
-        ecologicos: 'Ecológicos',
-        bolsas: 'Bolsas y Morrales'
     };
 
     const FIELD_LABELS: Record<string, string> = {
-        subtitle: 'SUBTÍTULO ESTRATÉGICO',
-        title: 'TÍTULO 1',
-        description: 'DESCRIPCIÓN 1',
-        title_2: 'TÍTULO 2',
-        description_2: 'DESCRIPCIÓN 2',
+        subtitle: 'ETIQUETA SUPERIOR',
+        title1: 'TÍTULO 1',
+        paragraph1: 'DESCRIPCIÓN 1',
+        title2: 'TÍTULO 2',
+        paragraph2: 'DESCRIPCIÓN 2',
         cta_text: 'TEXTO BOTÓN',
         cta_link: 'LINK BOTÓN',
         alt_text: 'TEXTO ALT IMAGEN (SEO)',
@@ -76,64 +70,14 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
 
     const DEFAULT_SECTION_CONTENT: Record<string, any> = {
         hero: {
-            title: 'REGALOS CORPORATIVOS',
-            subtitle: 'Arte en Movimiento',
-            cta_text: 'Ver Catálogo',
+            title1: 'ECOMOVING: MERCHANDISING SUSTENTABLE Y DISEÑO PREMIUM',
+            paragraph1: 'Elevamos tu marca con productos corporativos de alto impacto y conciencia ecológica.',
+            cta_text: 'EXPLORAR CATÁLOGO 2026',
             cta_link: '/catalogo'
         },
-        mugs: {
-            subtitle: 'COLECCIÓN EXCLUSIVA',
-            title: 'Colección Mugs Premium',
-            description: 'No solo creamos productos, diseñamos experiencias táctiles. Cada mug es una declaración de estilo y calidad para tu empresa.',
-            title_2: 'CURATORÍA DE MATERIALES',
-            description_2: 'Cada mug en nuestra colección es seleccionado por su equilibrio entre peso, textura y retención de temperatura.',
-            cta_text: 'Explorar Mugs',
-            cta_link: '/catalogo?category=mugs'
-        },
-        botellas: {
-            subtitle: 'HIDRATACIÓN ELITE',
-            title: 'Botellas de Alta Gama',
-            description: 'Acero inoxidable de grado quirúrgico y tecnología de doble pared. El compañero perfecto para la oficina y el aire libre.',
-            title_2: 'INGENIERÍA TÉRMICA',
-            description_2: 'Doble pared de acero inoxidable y sellado al vacío. Rendimiento extremo y diseño audaz.',
-            cta_text: 'Ver Catálogo',
-            cta_link: '/catalogo?category=botellas'
-        },
-        libretas: {
-            subtitle: 'ESCRITURA DE AUTOR',
-            title: 'Cuadernos y Libretas',
-            description: 'Cuadernos y libretas con acabados italianos y papel de alta densidad. El refugio perfecto para tus grandes ideas corporativas.',
-            title_2: 'EL PAPEL COMO ESCENARIO',
-            description_2: 'En un mundo digital, la escritura táctil recupera su valor estratégico.',
-            cta_text: 'Ver Cuadernos',
-            cta_link: '/catalogo?category=libretas'
-        },
-        mochilas: {
-            subtitle: 'MOVILIDAD URBANA',
-            title: 'Mochilas y Bolsos',
-            description: 'Diseño ergonómico y compartimentos inteligentes. La elegancia se une a la funcionalidad para el profesional moderno.',
-            title_2: 'INGENIERÍA MÓVIL',
-            description_2: 'Diseñadas para el profesional que no se detiene. Compartimentos inteligentes y ergonomía extrema.',
-            cta_text: 'Ver Colección',
-            cta_link: '/catalogo?category=mochilas'
-        },
-        ecologicos: {
-            subtitle: 'SOSTENIBILIDAD REAL',
-            title: 'Colección Ecológicos',
-            description: 'Sostenibilidad y estilo se unen en nuestra línea eco-friendly. Productos diseñados con respeto por el medio ambiente.',
-            title_2: 'HUELLA ZERO',
-            description_2: 'Bambú, rPET y fibras orgánicas. Lujo sustentable para marcas con propósito.',
-            cta_text: 'Ver Ecológicos',
-            cta_link: '/catalogo?category=ecologicos'
-        },
-        bolsas: {
-            subtitle: 'BOLSAS CON PROPÓSITO',
-            title: 'Bolsas y Morrales',
-            description: 'Soluciones versátiles para el transporte diario. Calidad y diseño en cada fibra para potenciar la visibilidad de tu marca.',
-            title_2: 'ESTILO TÁCTICO',
-            description_2: 'Totes de alta resistencia y morrales minimalistas. Marca con visibilidad constante.',
-            cta_text: 'Ver Bolsas',
-            cta_link: '/catalogo?category=bolsas'
+        sections: {
+            title1: 'Nueva Sección de Alto Impacto',
+            paragraph1: 'Añade contenido estratégico para posicionar tus productos premium.',
         }
     };
 
@@ -360,12 +304,15 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
             if (isSubtitle) {
                 aiContext = 'ACTÚA COMO COPYWRITER DE MARCA. Crea un SUBTÍTULO o ETIQUETA de impacto. Máximo 3 palabras. Ejemplo: "EDICIÓN LIMITADA", "CALIDAD GARANTIZADA".';
                 wordLimit = 3;
-            } else if (isTitle) {
+            } else if (lowField.includes('title1')) {
                 aiContext = 'ACTÚA COMO COPYWRITER SEO. Crea un TÍTULO principal potente. Máximo 8 palabras. No uses la palabra "premium" en exceso.';
                 wordLimit = 8;
-            } else if (isDescription) {
+            } else if (lowField.includes('paragraph1') || lowField.includes('paragraph2')) {
                 aiContext = 'ACTÚA COMO REDACTOR SEO B2B. Crea un PÁRRAFO persuasivo y directo. Máximo 25 palabras.';
                 wordLimit = 25;
+            } else if (lowField.includes('title2')) {
+                aiContext = 'ACTÚA COMO COPYWRITER DE MARCA. Crea un TÍTULO secundario elegante. Máximo 6 palabras.';
+                wordLimit = 6;
             } else {
                 aiContext = 'ACTÚA COMO REDACTOR ESTRATÉGICO. Crea un texto breve y directo. Máximo 20 palabras.';
                 wordLimit = 20;
@@ -377,7 +324,7 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
             LÍMITE DE PALABRAS: ${wordLimit}.`;
 
             // Determinar el nombre real de la sección para dar contexto (Mugs, Botellas, etc)
-            let sectionName = SECTION_LABELS[selectedSection] || selectedSection;
+            let sectionName = selectedSection ? (SECTION_LABELS[selectedSection] || selectedSection) : 'General';
 
             if (selectedSection === 'sections' && editingField?.startsWith('block:')) {
                 const [, sId] = editingField.split(':');
@@ -802,15 +749,15 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
                                         <div key={section.id} style={{ marginBottom: '40px', borderLeft: '2px solid rgba(255,255,255,0.05)', paddingLeft: '20px' }}>
                                             <div style={{ fontSize: '10px', color: '#666', marginBottom: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: section.bgColor || 'var(--accent-turquoise)' }}></div>
-                                                SECCIÓN: {section.title?.toUpperCase() || 'NUEVA SECCIÓN'}
+                                                SECCIÓN: {section.title1?.toUpperCase() || 'NUEVA SECCIÓN'}
                                             </div>
 
-                                            {/* Los 5 campos configurables solicitados */}
+                                            {/* Los campos configurables solicitados */}
                                             {renderEditableField(`block:${section.id}:root:subtitle`, section.subtitle || '')}
-                                            {renderEditableField(`block:${section.id}:root:title`, section.title || '')}
-                                            {renderEditableField(`block:${section.id}:root:description`, section.description || '')}
-                                            {renderEditableField(`block:${section.id}:root:title_2`, section.title_2 || '')}
-                                            {renderEditableField(`block:${section.id}:root:description_2`, section.description_2 || '')}
+                                            {renderEditableField(`block:${section.id}:root:title1`, section.title1 || '')}
+                                            {renderEditableField(`block:${section.id}:root:paragraph1`, section.paragraph1 || '')}
+                                            {renderEditableField(`block:${section.id}:root:title2`, section.title2 || '')}
+                                            {renderEditableField(`block:${section.id}:root:paragraph2`, section.paragraph2 || '')}
 
                                             {/* Opcional: Otros bloques con texto (pueden heredar de los campos anteriores) */}
                                             {section.blocks?.filter((b: any) => (b.type === 'text' || b.type === 'both') && b.textContent).map((block: any) => (
@@ -828,6 +775,8 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
                                     Object.entries(getSelectedContent()).map(([key, value]) => {
                                         if (typeof value === 'object' && !Array.isArray(value)) return null;
                                         if (Array.isArray(value)) return null;
+                                        // Filtramos campos redundantes si ya los procesamos antes o si son obsoletos
+                                        if (key === 'subtitle' || key === 'title2' || key === 'paragraph2' || key === 'title_2' || key === 'description_2') return null;
                                         return renderEditableField(key, value);
                                     })
                                 )}

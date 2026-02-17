@@ -28,6 +28,8 @@ export default function ProductCatalog({
     const [galleryImages, setGalleryImages] = useState<string[]>([]);
     const [isEditing, setIsEditing] = useState(false);
     const [filter, setFilter] = useState('Todos');
+    const [isExpandingCategories, setIsExpandingCategories] = useState(false);
+    const specialCategories = ['ECOLOGICOS', 'BOTELLAS, MUG Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS'];
 
     useEffect(() => {
         // Cargar productos aprobados desde Supabase
@@ -36,69 +38,129 @@ export default function ProductCatalog({
 
     const fetchApprovedProducts = async () => {
         try {
+            // Intentar cargar desde la nueva tabla 'productos' (Catálogo Vivo Optimizado)
             const { data, error } = await supabase
-                .from('agent_buffer')
+                .from('productos')
                 .select('*')
-                .eq('status', 'approved')
-                .order('found_at', { ascending: false });
+                .order('created_at', { ascending: false });
 
             if (error) {
-                console.error('Error loading from Supabase:', error);
-                // Fallback a catalog.json si Supabase falla
-                const catalogData = await import('../data/catalog.json');
-                setProducts(catalogData.default);
+                console.warn('Error loading from "productos" table, falling back to buffer/json:', error);
+
+                // Fallback 1: agent_buffer aprobado
+                const { data: bufferData, error: bufferError } = await supabase
+                    .from('agent_buffer')
+                    .select('*')
+                    .eq('status', 'approved')
+                    .order('found_at', { ascending: false });
+
+                if (bufferError || !bufferData || bufferData.length === 0) {
+                    // Fallback 2: catalog.json
+                    const catalogData = await import('../data/catalog.json');
+                    setProducts(catalogData.default);
+                    return;
+                }
+
+                const formatted = bufferData.map((item: any) => ({
+                    id: item.id,
+                    name: item.name,
+                    description: (item.original_description && item.original_description !== item.name) ? item.original_description : '',
+                    features: item.technical_specs?.specs || item.features || [],
+                    image: item.images?.[0] || item.image || '',
+                    images: item.images || [],
+                    category: item.category || item.technical_specs?.category || 'Otros',
+                    wholesaler: item.wholesaler || 'Premium',
+                    isPremium: item.technical_specs?.is_premium || false
+                }));
+                setProducts(formatted);
                 return;
             }
 
             if (data && data.length > 0) {
-                // Convertir formato de Supabase a formato Product
-                const formattedProducts: Product[] = data.map((item: any) => {
-                    // La categoría puede venir en la columna 'category' o dentro de technical_specs
-                    const category = item.category || item.technical_specs?.category || 'Otros';
+                const formattedProducts: Product[] = data.map((item: any) => ({
+                    id: item.id,
+                    name: item.nombre,
+                    description: item.descripcion || '',
+                    features: Array.isArray(item.features) ? item.features : [],
+                    image: item.imagen_principal || '',
+                    images: Array.isArray(item.imagenes_galeria) ? item.imagenes_galeria : [item.imagen_principal],
+                    category: item.categoria || 'Otros',
+                    wholesaler: item.wholesaler || 'Ecomoving',
+                    isPremium: item.is_premium || false
+                }));
 
-                    return {
-                        id: item.id,
-                        name: item.name,
-                        description: (item.original_description && item.original_description !== item.name) ? item.original_description : '',
-                        features: item.technical_specs?.specs || item.features || [],
-                        image: item.images?.[0] || item.image || '',
-                        images: item.images || [],
-                        category: category,
-                        wholesaler: item.wholesaler || 'Premium',
-                        isPremium: item.technical_specs?.is_premium || false
-                    };
-                });
-
-                console.log('✅ Productos cargados desde Supabase:', formattedProducts.length);
+                console.log('✅ Catálogo Vivo cargado desde Supabase:', formattedProducts.length);
                 setProducts(formattedProducts);
             } else {
-                // Si no hay productos aprobados, usar catalog.json
-                const catalogData = await import('../data/catalog.json');
-                setProducts(catalogData.default);
+                // Si la tabla productos está vacía, usar el buffer aprobado
+                const { data: bufferData } = await supabase
+                    .from('agent_buffer')
+                    .select('*')
+                    .eq('status', 'approved');
+
+                if (bufferData && bufferData.length > 0) {
+                    const formatted = bufferData.map((item: any) => ({
+                        id: item.id,
+                        name: item.name,
+                        description: item.original_description || '',
+                        features: item.technical_specs?.specs || [],
+                        image: item.images?.[0] || '',
+                        images: item.images || [],
+                        category: item.category || 'Otros',
+                        wholesaler: item.wholesaler || 'Premium',
+                        isPremium: item.technical_specs?.is_premium || false
+                    }));
+                    setProducts(formatted);
+                } else {
+                    const catalogData = await import('../data/catalog.json');
+                    setProducts(catalogData.default);
+                }
             }
         } catch (error) {
             console.error('Error fetching products:', error);
-            // Fallback a catalog.json
             const catalogData = await import('../data/catalog.json');
             setProducts(catalogData.default);
         }
     };
 
-    const categories = ['Todos', 'Mug', 'Botellas', 'Cuadernos y Libretas', 'Mochilas', 'Tecnología', 'Bolígrafos'];
+    const categoriesList = ['ECOLOGICOS', 'BOTELLAS, MUG Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS'];
     const filteredProducts = products.filter(p => {
-        const matchesCategory = filter === 'Todos' ||
-            p.category.toLowerCase().trim() === filter.toLowerCase().trim();
+        const pCat = (p.category || '').toUpperCase();
+        const fCat = filter.toUpperCase().trim();
+
+        if (fCat === 'TODOS') return (!externalSearch || p.name.toLowerCase().includes(externalSearch.toLowerCase()));
+
+        // Filtro especial para Premium
+        if (fCat === 'PREMIUM') {
+            const matchesPremium = p.isPremium;
+            const matchesSearch = !externalSearch ||
+                p.name.toLowerCase().includes(externalSearch.toLowerCase()) ||
+                p.description.toLowerCase().includes(externalSearch.toLowerCase());
+            return matchesPremium && matchesSearch;
+        }
+
+        // Mapeo inteligente para retrocompatibilidad
+        const categoryMap: Record<string, string[]> = {
+            'ECOLOGICOS': ['ECOLOGICOS', 'ECO', 'MADERA', 'CORCHO'],
+            'BOTELLAS, MUG Y TAZAS': ['BOTELLAS', 'MUG', 'TAZAS', 'BOTELLA', 'TAZA', 'VASO', 'TERMO'],
+            'CUADERNOS, LIBRETAS Y MEMO SET': ['CUADERNOS', 'LIBRETAS', 'MEMO', 'LIBRETA', 'CUADERNO', 'NOTAS'],
+            'MOCHILAS, BOLSOS Y MORRALES': ['MOCHILAS', 'BOLSOS', 'MORRALES', 'MOCHILA', 'BOLSO', 'MORRAL', 'MALETIN', 'CARPETA'],
+            'BOLÍGRAFOS': ['BOLÍGRAFOS', 'BOLIGRAFO', 'LAPIZ', 'BOLIGRAFOS'],
+            'ACCESORIOS': ['ACCESORIOS', 'RELOJ', 'TECNOLOGIA', 'LLAVERO', 'HERRAMIENTAS']
+        };
+
+        const alias = categoryMap[fCat] || [fCat];
+        const matchesCategory = alias.some(a => pCat.includes(a));
+
         const matchesSearch = !externalSearch ||
             p.name.toLowerCase().includes(externalSearch.toLowerCase()) ||
             p.description.toLowerCase().includes(externalSearch.toLowerCase()) ||
-            p.id.toLowerCase().includes(externalSearch.toLowerCase());
+            (p.id && p.id.toLowerCase().includes(externalSearch.toLowerCase()));
+
         return matchesCategory && matchesSearch;
     });
 
-    const saveToLocal = (newProducts: Product[]) => {
-        setProducts(newProducts);
-        localStorage.setItem('ecomoving_catalog', JSON.stringify(newProducts));
-    };
+
 
     const handleLocalUpdate = (updatedProduct: Product) => {
         const newProducts = products.map(p => p.id === updatedProduct.id ? updatedProduct : p);
@@ -109,38 +171,51 @@ export default function ProductCatalog({
     const handleSaveToSupabase = async () => {
         if (!selectedProduct) return;
 
-        // Verificar si el ID es de Supabase (formato UUID)
-        const isSupabaseProduct = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(selectedProduct.id);
-
-        if (!isSupabaseProduct) {
-            alert('Este producto es parte del catálogo base estático y no puede editarse en la base de datos directamente.');
-            return;
-        }
-
         try {
             const mainImg = activeImage || selectedProduct.image;
             const otherImgs = (selectedProduct.images || []).filter(img => img !== mainImg);
             const orderedImages = [mainImg, ...otherImgs].filter(Boolean);
 
-            const { error } = await supabase
-                .from('agent_buffer')
-                .update({
-                    name: selectedProduct.name,
-                    // La columna 'category' podría no existir, la guardamos dentro de technical_specs
-                    original_description: selectedProduct.description,
-                    technical_specs: {
-                        specs: selectedProduct.features,
-                        category: selectedProduct.category
-                    },
-                    images: orderedImages,
-                    wholesaler: selectedProduct.wholesaler
-                })
-                .eq('id', selectedProduct.id);
+            // Determinar si el producto viene de 'productos' o del buffer
+            const { data: isLive } = await supabase
+                .from('productos')
+                .select('id')
+                .eq('id', selectedProduct.id)
+                .maybeSingle();
 
-            if (error) {
-                console.error('Supabase update error:', error);
-                throw error;
+            if (isLive) {
+                const { error } = await supabase
+                    .from('productos')
+                    .update({
+                        nombre: selectedProduct.name,
+                        descripcion: selectedProduct.description,
+                        categoria: selectedProduct.category,
+                        imagen_principal: mainImg,
+                        imagenes_galeria: orderedImages,
+                        features: selectedProduct.features,
+                        wholesaler: selectedProduct.wholesaler
+                    })
+                    .eq('id', selectedProduct.id);
+
+                if (error) throw error;
+            } else {
+                const { error } = await supabase
+                    .from('agent_buffer')
+                    .update({
+                        name: selectedProduct.name,
+                        original_description: selectedProduct.description,
+                        technical_specs: {
+                            specs: selectedProduct.features,
+                            category: selectedProduct.category
+                        },
+                        images: orderedImages,
+                        wholesaler: selectedProduct.wholesaler
+                    })
+                    .eq('id', selectedProduct.id);
+
+                if (error) throw error;
             }
+
             alert('Producto actualizado exitosamente en el catálogo');
         } catch (error: any) {
             console.error('Error updating product:', error);
@@ -148,24 +223,7 @@ export default function ProductCatalog({
         }
     };
 
-    const handleDropOnNew = (e: React.DragEvent) => {
-        e.preventDefault();
-        const url = e.dataTransfer.getData('image_url');
-        if (url) {
-            const newProduct: Product = {
-                id: Date.now().toString(),
-                name: "Nuevo Producto",
-                description: "Haz click para editar la descripción...",
-                features: ["Característica 1", "Característica 2"],
-                image: url,
-                category: "General",
-                wholesaler: "Mayorista"
-            };
-            saveToLocal([...products, newProduct]);
-            setSelectedProduct(newProduct);
-            setIsEditing(true);
-        }
-    };
+
 
     const handleDelete = async (id: string) => {
         // Verificar si el ID es de Supabase (formato UUID)
@@ -222,22 +280,116 @@ export default function ProductCatalog({
     return (
         <div className="catalog-wrapper">
             <div className="container">
-                <div className="catalog-header">
-                    <h2 className="catalog-title">CURADURÍA <span className="highlight">ESTRATÉGICA</span></h2>
-                    <p className="catalog-subtitle">Merchandising que eleva la identidad corporativa. Desde pequeñas series hasta grandes volúmenes.</p>
-                </div>
 
-                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
-                    <div className="category-filter" style={{ marginBottom: 0 }}>
-                        {['Todos', 'Mug', 'Botellas', 'Cuadernos y Libretas', 'Mochilas', 'Tecnología', 'Bolígrafos'].map(cat => (
-                            <button
-                                key={cat}
-                                className={`filter-btn ${filter === cat ? 'active' : ''}`}
-                                onClick={() => setFilter(cat)}
-                            >
-                                {cat}
-                            </button>
-                        ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '60px', marginTop: '40px', flexWrap: 'wrap' }}>
+                    {/* Dropdown de Categorías */}
+                    <div style={{ position: 'relative' }}>
+                        <button
+                            onClick={() => setIsExpandingCategories(!isExpandingCategories)}
+                            style={{
+                                backgroundColor: 'transparent',
+                                border: '1px solid rgba(255,255,255,0.1)',
+                                color: 'white',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                letterSpacing: '2px',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '15px 30px',
+                                borderRadius: '2px',
+                                textTransform: 'uppercase',
+                                background: isExpandingCategories ? 'rgba(0,212,189,0.1)' : 'transparent'
+                            }}
+                        >
+                            CATEGORIAS <ChevronRight size={14} style={{ transform: isExpandingCategories ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />
+                        </button>
+
+                        <AnimatePresence>
+                            {isExpandingCategories && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 10 }}
+                                    style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        left: 0,
+                                        width: '280px',
+                                        backgroundColor: '#0a0a0a',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: '4px',
+                                        marginTop: '10px',
+                                        boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
+                                        maxHeight: '400px',
+                                        overflowY: 'auto',
+                                        zIndex: 1000
+                                    }}
+                                    className="custom-scroll"
+                                >
+                                    <button
+                                        onClick={() => { setFilter('Todos'); setIsExpandingCategories(false); }}
+                                        style={{ width: '100%', padding: '15px 25px', textAlign: 'left', background: 'none', border: 'none', color: filter === 'Todos' ? 'var(--accent-turquoise)' : '#888', fontSize: '12px', fontWeight: '700', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                                    >
+                                        TODAS LAS CATEGORÍAS
+                                    </button>
+                                    {specialCategories.sort().map(cat => (
+                                        <button
+                                            key={cat}
+                                            onClick={() => { setFilter(cat); setIsExpandingCategories(false); }}
+                                            style={{ width: '100%', padding: '15px 25px', textAlign: 'left', background: 'none', border: 'none', color: filter === cat ? 'var(--accent-turquoise)' : '#888', fontSize: '11px', fontWeight: '600', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)', textTransform: 'uppercase' }}
+                                        >
+                                            {cat}
+                                        </button>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
+                    <div style={{ width: '1px', height: '30px', background: 'rgba(255,255,255,0.1)' }} />
+
+                    {/* Botones de Acceso Rápido */}
+                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                        <button
+                            onClick={() => setFilter('ECOLOGICOS')}
+                            style={{
+                                padding: '12px 25px',
+                                borderRadius: '2px',
+                                border: '1px solid',
+                                borderColor: filter === 'ECOLOGICOS' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)',
+                                backgroundColor: filter === 'ECOLOGICOS' ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
+                                color: filter === 'ECOLOGICOS' ? 'var(--accent-gold)' : '#aaa',
+                                fontSize: '11px',
+                                fontWeight: '800',
+                                cursor: 'pointer',
+                                transition: 'all 0.3s',
+                                letterSpacing: '2px',
+                                textTransform: 'uppercase'
+                            }}
+                        >
+                            PRODUCTOS ECO
+                        </button>
+                        <button
+                            onClick={() => setFilter('PREMIUM')}
+                            style={{
+                                padding: '12px 25px',
+                                borderRadius: '2px',
+                                border: '1px solid',
+                                borderColor: filter === 'PREMIUM' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)',
+                                backgroundColor: filter === 'PREMIUM' ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
+                                color: filter === 'PREMIUM' ? 'var(--accent-gold)' : '#aaa',
+                                fontSize: '11px',
+                                fontWeight: '800',
+                                cursor: 'pointer',
+                                transition: 'all 0.3s',
+                                letterSpacing: '2px',
+                                textTransform: 'uppercase'
+                            }}
+                        >
+                            PRODUCTOS PREMIUM
+                        </button>
                     </div>
                 </div>
 
@@ -297,20 +449,7 @@ export default function ProductCatalog({
                         </motion.div>
                     ))}
 
-                    {/* Slot para agregar nuevo producto */}
-                    <div
-                        className="add-product-slot"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={handleDropOnNew}
-                    >
-                        <div className="add-content">
-                            <div className="icon-circle">
-                                <Plus size={32} />
-                            </div>
-                            <span>Añadir Producto</span>
-                            <p>Suelta una imagen aquí</p>
-                        </div>
-                    </div>
+
                 </div>
             </div>
 
@@ -335,22 +474,167 @@ export default function ProductCatalog({
                         onClick={() => setSelectedProduct(null)}
                     >
                         <motion.div
-                            layoutId={`card-${selectedProduct.id}`}
-                            style={{
-                                backgroundColor: '#0a0a0a',
-                                width: '100%',
-                                maxWidth: '1400px',
-                                maxHeight: '90vh',
-                                border: '1px solid rgba(255,255,255,0.05)',
-                                borderRadius: '4px',
-                                overflow: 'hidden',
-                                position: 'relative',
-                                boxShadow: '0 50px 100px rgba(0,0,0,0.9)',
-                                display: 'grid',
-                                gridTemplateColumns: '1.2fr 1fr'
-                            }}
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="modal-content"
                             onClick={(e) => e.stopPropagation()}
                         >
+                            <div className="modal-inner">
+                                <div className="modal-image-stage">
+                                    <div
+                                        className="main-image-container"
+                                        onDragOver={(e) => {
+                                            if (isEditing) e.preventDefault();
+                                        }}
+                                        onDrop={(e) => {
+                                            if (!isEditing) return;
+                                            e.preventDefault();
+                                            const url = e.dataTransfer.getData('image_url');
+                                            if (url && selectedProduct) {
+                                                const updated = { ...selectedProduct, image: url, images: [url, ...(selectedProduct.images || []).filter(i => i !== url)] };
+                                                handleLocalUpdate(updated);
+                                                setActiveImage(url);
+                                            }
+                                        }}
+                                    >
+                                        <motion.img
+                                            key={activeImage || selectedProduct.image}
+                                            initial={{ opacity: 0, scale: 0.98 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                                            src={activeImage || selectedProduct.image}
+                                            alt={selectedProduct.name}
+                                            className="modal-hero-image"
+                                        />
+                                        {isEditing && (
+                                            <div className="image-edit-overlay">
+                                                <ImageIcon size={48} style={{ marginBottom: '20px', opacity: 0.2 }} />
+                                            </div>
+                                        )}
+
+                                        {/* Galería de Miniaturas como Overlay */}
+                                        <div className="modal-thumbnails-overlay">
+                                            <div className="thumbnails-scroll">
+                                                {(galleryImages.length > 0 ? galleryImages : [selectedProduct.image]).map((img, idx) => (
+                                                    <motion.div
+                                                        key={idx}
+                                                        whileHover={{ scale: 1.1 }}
+                                                        whileTap={{ scale: 0.9 }}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setActiveImage(img);
+                                                        }}
+                                                        className={`thumbnail-item ${(activeImage || selectedProduct.image) === img ? 'active' : ''}`}
+                                                    >
+                                                        <img src={img} alt={`${selectedProduct.name} - Vista ${idx + 1}`} />
+                                                    </motion.div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="modal-text-col">
+                                    {isEditing ? (
+                                        <div className="edit-form">
+                                            <div style={{ marginBottom: '15px' }}>
+                                                <label style={{ display: 'block', fontSize: '10px', color: '#666', marginBottom: '5px', fontWeight: '800' }}>CATEGORÍA OFICIAL</label>
+                                                <select
+                                                    className="edit-input-category"
+                                                    value={selectedProduct.category}
+                                                    onChange={(e) => handleLocalUpdate({ ...selectedProduct, category: e.target.value })}
+                                                    style={{ width: '100%', backgroundColor: '#111', border: '1px solid #333', color: 'white', padding: '12px', borderRadius: '6px', fontSize: '13px' }}
+                                                >
+                                                    <option value="">Seleccionar Categoría...</option>
+                                                    {specialCategories.map(cat => (
+                                                        <option key={cat} value={cat}>{cat}</option>
+                                                    ))}
+                                                    <option value="Otros">Otros</option>
+                                                </select>
+                                            </div>
+                                            <input
+                                                className="edit-input-title"
+                                                value={selectedProduct.name}
+                                                onChange={(e) => handleLocalUpdate({ ...selectedProduct, name: e.target.value })}
+                                                placeholder="Nombre del Producto"
+                                            />
+
+                                            <div className="features-edit">
+                                                <h4>Características (una por línea)</h4>
+                                                <textarea
+                                                    className="edit-input-features"
+                                                    value={selectedProduct.features.join('\n')}
+                                                    onChange={(e) => handleLocalUpdate({ ...selectedProduct, features: e.target.value.split('\n') })}
+                                                />
+                                            </div>
+
+                                            <input
+                                                className="edit-input-wholesaler"
+                                                value={selectedProduct.wholesaler}
+                                                onChange={(e) => handleLocalUpdate({ ...selectedProduct, wholesaler: e.target.value })}
+                                                placeholder="Nombre del Mayorista"
+                                            />
+
+                                            <button className="delete-btn" onClick={() => handleDelete(selectedProduct.id)}>Eliminar Producto</button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <span className="category-tag">{selectedProduct.category}</span>
+                                            <h2>{selectedProduct.name}</h2>
+
+                                            <div className="specs-container">
+                                                <h4 className="specs-header">Especificaciones Técnicas</h4>
+                                                <ul className="specs-list">
+                                                    {selectedProduct.features && selectedProduct.features.length > 0 ? (
+                                                        selectedProduct.features.filter(f => f && !['Calidad Premium', 'Ecorresponsable'].includes(f.trim())).map((f, i) => (
+                                                            <li key={i}>
+                                                                <ChevronRight size={14} className="accent" /> {f}
+                                                            </li>
+                                                        ))
+                                                    ) : (
+                                                        <li className="specs-empty">Consulte para más detalles técnicos.</li>
+                                                    )}
+                                                </ul>
+                                            </div>
+
+                                            <button className="btn-cotizar">Solicitar Cotización Personalizada</button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Productos Relacionados al Ancho */}
+                            {!isEditing && products.filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id).length > 0 && (
+                                <div className="modal-footer-related">
+                                    <h4 className="related-header">Productos Relacionados</h4>
+                                    <div className="related-grid-full">
+                                        {products
+                                            .filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id)
+                                            .slice(0, 4)
+                                            .map(related => (
+                                                <div
+                                                    key={related.id}
+                                                    className="related-card-footer"
+                                                    onClick={() => {
+                                                        setSelectedProduct(related);
+                                                        setActiveImage(related.image);
+                                                        const modalScroll = document.querySelector('.modal-content');
+                                                        if (modalScroll) modalScroll.scrollTop = 0;
+                                                    }}
+                                                >
+                                                    <div className="related-img-box">
+                                                        <img src={related.image} alt={related.name} />
+                                                    </div>
+                                                    <span className="related-name-footer">
+                                                        {related.name}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+
                             <div style={{ position: 'absolute', right: '40px', top: '40px', display: 'flex', gap: '20px', zIndex: 100 }}>
                                 {adminMode && (
                                     <button className="action-btn" onClick={() => {
@@ -366,335 +650,8 @@ export default function ProductCatalog({
                                     <X />
                                 </button>
                             </div>
-
-                            <div className="modal-image-col" style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                background: '#000',
-                                height: '100%',
-                                maxHeight: '90vh',
-                                overflow: 'hidden'
-                            }}>
-                                {/* Área de Imagen Principal */}
-                                <div
-                                    onDragOver={(e) => {
-                                        if (isEditing) e.preventDefault();
-                                    }}
-                                    onDrop={(e) => {
-                                        if (!isEditing) return;
-                                        e.preventDefault();
-                                        const url = e.dataTransfer.getData('image_url');
-                                        if (url && selectedProduct) {
-                                            const updated = { ...selectedProduct, image: url, images: [url, ...(selectedProduct.images || []).filter(i => i !== url)] };
-                                            handleLocalUpdate(updated);
-                                            setActiveImage(url);
-                                        }
-                                    }}
-                                    style={{
-                                        flex: 1,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        position: 'relative',
-                                        padding: '40px',
-                                        minHeight: 0, // Importante para flexbox
-                                        overflow: 'hidden'
-                                    }}
-                                >
-                                    <motion.img
-                                        key={activeImage || selectedProduct.image}
-                                        initial={{ opacity: 0, scale: 0.95 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ duration: 0.4 }}
-                                        src={activeImage || selectedProduct.image}
-                                        alt={selectedProduct.name}
-                                        style={{
-                                            maxWidth: '100%',
-                                            maxHeight: '100%',
-                                            objectFit: 'contain',
-                                            filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.5))'
-                                        }}
-                                    />
-                                    {isEditing && (
-                                        <div className="image-edit-overlay">
-                                            <ImageIcon size={48} style={{ marginBottom: '20px', opacity: 0.2 }} />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Galería de Miniaturas */}
-                                <div style={{
-                                    padding: '20px 40px',
-                                    background: 'rgba(10, 10, 10, 0.8)',
-                                    borderTop: '1px solid rgba(0, 212, 189, 0.2)',
-                                    backdropFilter: 'blur(15px)',
-                                    flexShrink: 0,
-                                    zIndex: 10
-                                }}>
-                                    <p style={{ fontSize: '10px', color: 'var(--accent-gold)', textTransform: 'uppercase', letterSpacing: '2px', marginBottom: '15px', textAlign: 'center', opacity: 0.6 }}>Vistas de Producto</p>
-                                    <div style={{
-                                        display: 'flex',
-                                        gap: '12px',
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                        flexWrap: 'wrap'
-                                    }}>
-                                        {galleryImages.length > 0 ? galleryImages.map((img, idx) => (
-                                            <motion.div
-                                                key={idx}
-                                                whileHover={{ scale: 1.1, y: -5 }}
-                                                whileTap={{ scale: 0.95 }}
-                                                onClick={() => {
-                                                    setActiveImage(img);
-                                                    if (adminMode) {
-                                                        handleLocalUpdate({ ...selectedProduct, image: img });
-                                                    }
-                                                }}
-                                                style={{
-                                                    width: '65px',
-                                                    height: '65px',
-                                                    flexShrink: 0,
-                                                    cursor: 'pointer',
-                                                    border: (activeImage || selectedProduct.image) === img ? '2px solid var(--accent-turquoise)' : '1px solid rgba(255,255,255,0.1)',
-                                                    borderRadius: '4px',
-                                                    overflow: 'hidden',
-                                                    opacity: (activeImage || selectedProduct.image) === img ? 1 : 0.4,
-                                                    transition: 'all 0.3s ease',
-                                                    background: '#111',
-                                                    boxShadow: (activeImage || selectedProduct.image) === img ? '0 0 20px rgba(0,212,189,0.3)' : 'none',
-                                                    position: 'relative'
-                                                }}
-                                            >
-                                                <img
-                                                    src={img}
-                                                    alt={`${selectedProduct.name} - Vista ${idx + 1}`}
-                                                    style={{
-                                                        width: '100%',
-                                                        height: '100%',
-                                                        objectFit: 'cover'
-                                                    }}
-                                                />
-                                                {selectedProduct.image === img && (
-                                                    <div style={{
-                                                        position: 'absolute',
-                                                        bottom: 0,
-                                                        left: 0,
-                                                        right: 0,
-                                                        background: 'var(--accent-gold)',
-                                                        color: 'black',
-                                                        fontSize: '8px',
-                                                        fontWeight: '900',
-                                                        textAlign: 'center',
-                                                        padding: '2px 0',
-                                                        textTransform: 'uppercase',
-                                                        letterSpacing: '1px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        gap: '4px'
-                                                    }}>
-                                                        <Star size={8} fill="black" /> PRINCIPAL
-                                                    </div>
-                                                )}
-                                                {adminMode && activeImage === img && selectedProduct.image !== img && (
-                                                    <div style={{
-                                                        position: 'absolute',
-                                                        top: 0,
-                                                        right: 0,
-                                                        background: 'var(--accent-turquoise)',
-                                                        color: 'black',
-                                                        padding: '4px',
-                                                        borderRadius: '0 0 0 4px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        boxShadow: '0 2px 10px rgba(0,0,0,0.3)'
-                                                    }}>
-                                                        <Edit3 size={10} />
-                                                    </div>
-                                                )}
-                                            </motion.div>
-                                        )) : (
-                                            /* Fallback si galleryImages está vacío pero tenemos imagen principal */
-                                            <motion.div
-                                                whileHover={{ scale: 1.1, y: -5 }}
-                                                whileTap={{ scale: 0.95 }}
-                                                onClick={() => setActiveImage(selectedProduct.image)}
-                                                style={{
-                                                    width: '65px',
-                                                    height: '65px',
-                                                    flexShrink: 0,
-                                                    cursor: 'pointer',
-                                                    border: '2px solid var(--accent-turquoise)',
-                                                    borderRadius: '4px',
-                                                    overflow: 'hidden',
-                                                    background: '#111',
-                                                    boxShadow: '0 0 20px rgba(0,212,189,0.3)'
-                                                }}
-                                            >
-                                                <img
-                                                    src={selectedProduct.image}
-                                                    alt={selectedProduct.name}
-                                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                                />
-                                            </motion.div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="modal-content-scroll" style={{ padding: '80px', display: 'flex', flexDirection: 'column', backgroundColor: '#0a0a0a', overflowY: 'auto', borderLeft: '1px solid rgba(255,255,255,0.05)', maxHeight: '90vh' }}>
-                                {isEditing ? (
-                                    <div className="edit-form">
-                                        <input
-                                            className="edit-input-category"
-                                            value={selectedProduct.category}
-                                            onChange={(e) => handleLocalUpdate({ ...selectedProduct, category: e.target.value })}
-                                            placeholder="Categoría"
-                                        />
-                                        <input
-                                            className="edit-input-title"
-                                            value={selectedProduct.name}
-                                            onChange={(e) => handleLocalUpdate({ ...selectedProduct, name: e.target.value })}
-                                            placeholder="Nombre del Producto"
-                                        />
-
-                                        <div className="features-edit">
-                                            <h4>Características (un por línea)</h4>
-                                            <textarea
-                                                className="edit-input-features"
-                                                value={selectedProduct.features.join('\n')}
-                                                onChange={(e) => handleLocalUpdate({ ...selectedProduct, features: e.target.value.split('\n') })}
-                                            />
-                                        </div>
-
-                                        <input
-                                            className="edit-input-wholesaler"
-                                            value={selectedProduct.wholesaler}
-                                            onChange={(e) => handleLocalUpdate({ ...selectedProduct, wholesaler: e.target.value })}
-                                            placeholder="Nombre del Mayorista"
-                                        />
-
-                                        <button className="delete-btn" onClick={() => handleDelete(selectedProduct.id)}>Eliminar Producto</button>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '35px' }}>
-                                            <span className="category-tag" style={{ margin: 0, fontSize: '0.9rem', letterSpacing: '4px' }}>{selectedProduct.category}</span>
-                                        </div>
-                                        <h2 style={{
-                                            fontSize: '1.5rem',
-                                            lineHeight: '1.3',
-                                            marginBottom: '20px',
-                                            color: 'white',
-                                            fontFamily: 'var(--font-heading)',
-                                            letterSpacing: '1px',
-                                            textTransform: 'uppercase',
-                                            maxWidth: '900px'
-                                        }}>
-                                            {selectedProduct.name}
-                                        </h2>
-
-                                        <div style={{
-                                            padding: '40px',
-                                            background: 'rgba(0, 212, 189, 0.02)',
-                                            border: '1px solid rgba(0, 212, 189, 0.08)',
-                                            borderRadius: '4px',
-                                            marginBottom: '40px',
-                                            maxWidth: '1000px',
-                                            width: '100%'
-                                        }}>
-                                            <div style={{
-                                                display: 'inline-block',
-                                                padding: '10px 20px',
-                                                background: 'rgba(0, 212, 189, 0.05)',
-                                                borderRadius: '2px',
-                                                marginBottom: '35px',
-                                                border: '1px solid rgba(0, 212, 189, 0.2)'
-                                            }}>
-                                                <h4 style={{
-                                                    fontFamily: 'var(--font-heading)',
-                                                    textTransform: 'uppercase',
-                                                    fontSize: '0.75rem',
-                                                    color: 'var(--accent-turquoise)',
-                                                    margin: 0,
-                                                    letterSpacing: '4px',
-                                                    fontWeight: '800'
-                                                }}>
-                                                    Especificaciones Técnicas
-                                                </h4>
-                                            </div>
-                                            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                                {selectedProduct.features && selectedProduct.features.length > 0 ? (
-                                                    selectedProduct.features.filter(f => f && !['Calidad Premium', 'Ecorresponsable'].includes(f.trim())).map((f, i) => (
-                                                        <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '15px', color: '#ccc', marginBottom: '20px', fontSize: '1rem', fontWeight: '300', lineHeight: '1.6' }}>
-                                                            <ChevronRight size={14} className="accent" style={{ marginTop: '5px', flexShrink: 0 }} /> {f}
-                                                        </li>
-                                                    ))
-                                                ) : (
-                                                    <li style={{ color: '#555', fontSize: '0.9rem', fontStyle: 'italic' }}>Consulte para más detalles técnicos.</li>
-                                                )}
-                                            </ul>
-                                        </div>
-
-                                        <button className="btn-contact" style={{ width: '100%', marginBottom: '60px' }}>Solicitar Cotización Personalizada</button>
-
-                                        {/* Productos Relacionados */}
-                                        {products.filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id).length > 0 && (
-                                            <div className="related-products-section" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '40px' }}>
-                                                <h4 style={{
-                                                    fontFamily: 'var(--font-heading)',
-                                                    textTransform: 'uppercase',
-                                                    fontSize: '0.7rem',
-                                                    color: 'rgba(255,255,255,0.4)',
-                                                    marginBottom: '25px',
-                                                    letterSpacing: '3px'
-                                                }}>Productos Relacionados</h4>
-                                                <div style={{
-                                                    display: 'grid',
-                                                    gridTemplateColumns: 'repeat(2, 1fr)',
-                                                    gap: '20px'
-                                                }}>
-                                                    {products
-                                                        .filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id)
-                                                        .slice(0, 4)
-                                                        .map(related => (
-                                                            <div
-                                                                key={related.id}
-                                                                className="related-item"
-                                                                onClick={() => {
-                                                                    setSelectedProduct(related);
-                                                                    setActiveImage(related.image);
-                                                                    // Enfocar arriba al cambiar
-                                                                    const modalScroll = document.querySelector('.modal-content-scroll');
-                                                                    if (modalScroll) modalScroll.scrollTop = 0;
-                                                                }}
-                                                                style={{
-                                                                    cursor: 'pointer',
-                                                                    background: 'rgba(255,255,255,0.02)',
-                                                                    borderRadius: '4px',
-                                                                    padding: '15px',
-                                                                    border: '1px solid rgba(255,255,255,0.05)',
-                                                                    transition: 'all 0.3s ease',
-                                                                    display: 'flex',
-                                                                    flexDirection: 'column',
-                                                                    gap: '12px'
-                                                                }}
-                                                            >
-                                                                <div style={{ aspectRatio: '1/1', overflow: 'hidden', borderRadius: '2px', background: '#000' }}>
-                                                                    <img src={related.image} alt={related.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                                                </div>
-                                                                <span style={{ fontSize: '0.7rem', color: '#fff', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                    {related.name}
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
                         </motion.div>
+
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -728,7 +685,7 @@ export default function ProductCatalog({
                     display: flex;
                     justify-content: center;
                     gap: 15px;
-                    margin-bottom: 60px;
+                    width: 100%;
                     flex-wrap: wrap;
                 }
                 .filter-btn {
@@ -844,15 +801,15 @@ export default function ProductCatalog({
                     opacity: 1;
                 }
                 .product-meta {
-                    padding: 25px;
+                    padding: 15px 20px;
                     text-align: center;
                 }
                 .product-meta h3 {
                     margin: 0;
-                    font-size: 1.25rem;
+                    font-size: 1rem;
                     color: white;
                     font-family: var(--font-heading);
-                    letter-spacing: 2px;
+                    letter-spacing: 1.5px;
                     text-transform: uppercase;
                 }
                 .product-meta p {
@@ -863,74 +820,27 @@ export default function ProductCatalog({
                     letter-spacing: 3px;
                 }
 
-                .add-product-slot {
-                    background: #050505;
-                    border: 1px dashed rgba(255,255,255,0.1);
-                    aspect-ratio: 1/1;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: all 0.4s;
-                    cursor: pointer;
-                    border-radius: 4px;
-                }
-                .add-product-slot:hover {
-                    border-color: var(--accent-turquoise);
-                    background: rgba(0,212,189,0.02);
-                }
-                .add-content {
-                    text-align: center;
-                    color: #444;
-                }
-                .add-product-slot:hover .add-content {
-                    color: var(--accent-turquoise);
-                }
-                .icon-circle {
-                    width: 60px;
-                    height: 60px;
-                    border-radius: 50%;
-                    border: 1px solid rgba(255,255,255,0.1);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin: 0 auto 20px auto;
-                    transition: all 0.4s;
-                }
-                .add-product-slot:hover .icon-circle {
-                    border-color: var(--accent-turquoise);
-                    transform: scale(1.1);
-                }
-                .add-content span {
-                    display: block;
-                    font-family: var(--font-heading);
-                    font-size: 1rem;
-                    text-transform: uppercase;
-                    letter-spacing: 3px;
-                }
-                .add-content p {
-                    font-size: 0.8rem;
-                    margin-top: 8px;
-                    letter-spacing: 1px;
-                }
+
 
                 /* Modal */
                 .modal-backdrop {
                     position: fixed;
                     inset: 0;
-                    background: rgba(0,0,0,0.98);
-                    backdrop-filter: blur(20px);
+                    background: rgba(0,0,0,0.99);
+                    backdrop-filter: blur(30px);
                     z-index: 10000;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    padding: 40px;
+                    padding: 60px;
                 }
                 .modal-content {
-                    background: #0a0a0a;
+                    background: #000;
                     width: 100%;
-                    max-width: 1400px;
-                    max-height: 90vh;
-                    border-radius: 0;
+                    max-width: 1360px;
+                    max-height: 75vh;
+                    height: auto;
+                    border-radius: 12px;
                     overflow: hidden;
                     position: relative;
                     border: 1px solid rgba(255,255,255,0.05);
@@ -978,106 +888,215 @@ export default function ProductCatalog({
                 }
                 .modal-inner {
                     display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    height: 90vh;
+                    grid-template-columns: 1.2fr 0.8fr;
+                    height: 100%;
+                    min-height: 80vh;
                 }
                 @media (max-width: 1024px) {
                     .modal-inner {
                         grid-template-columns: 1fr;
                         overflow-y: auto;
                     }
-                    .modal-content {
-                        max-height: 95vh;
-                    }
                 }
-                .modal-image-col {
+                
+                .modal-image-stage {
                     position: relative;
                     background: #000;
-                    padding: 60px;
+                    height: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                }
+                .main-image-container {
+                    flex: 1;
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                    position: relative;
+                    padding: 60px;
+                    overflow: hidden;
                 }
-                .modal-image-col img {
-                    width: 100%;
-                    height: 100%;
+                .modal-hero-image {
+                    max-width: 100%;
+                    max-height: 100%;
                     object-fit: contain;
-                    filter: drop-shadow(0 20px 50px rgba(0,0,0,0.5));
+                    filter: drop-shadow(0 40px 100px rgba(0,0,0,0.9));
                 }
                 .image-edit-overlay {
                     position: absolute;
-                    inset: 40px;
+                    inset: 0;
                     background: rgba(0,212,189,0.05);
                     border: 2px dashed var(--accent-turquoise);
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    text-align: center;
-                    padding: 40px;
                     pointer-events: none;
-                    color: var(--accent-turquoise);
-                    font-family: var(--font-heading);
-                    letter-spacing: 4px;
-                    text-transform: uppercase;
+                    z-index: 5;
                 }
+                
+                .modal-thumbnails-overlay {
+                    position: absolute;
+                    bottom: 40px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    z-index: 20;
+                    pointer-events: none;
+                }
+                .thumbnails-scroll {
+                    display: flex;
+                    gap: 15px;
+                    padding: 15px 30px;
+                    background: rgba(15, 15, 15, 0.4);
+                    backdrop-filter: blur(40px);
+                    border-radius: 100px;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    pointer-events: auto;
+                    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+                }
+                .thumbnail-item {
+                    width: 40px;
+                    height: 40px;
+                    border-radius: 6px;
+                    overflow: hidden;
+                    cursor: pointer;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    opacity: 0.4;
+                    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+                    background: #111;
+                }
+                .thumbnail-item.active {
+                    opacity: 1;
+                    border: 2px solid white;
+                    transform: scale(1.1);
+                }
+                .thumbnail-item img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+
                 .modal-text-col {
-                    padding: 100px 80px;
+                    background: #080808;
+                    padding: 60px 50px;
+                    height: 100%;
+                    overflow-y: auto;
+                    border-left: 1px solid rgba(255,255,255,0.03);
                     display: flex;
                     flex-direction: column;
-                    background: #0a0a0a;
-                    overflow-y: auto;
-                    border-left: 1px solid rgba(255,255,255,0.05);
-                }
-                .category-tag {
-                    color: var(--accent-gold);
-                    font-size: 0.8rem;
-                    text-transform: uppercase;
-                    letter-spacing: 5px;
-                    margin-bottom: 30px;
-                    display: block;
-                    font-family: var(--font-body);
-                    font-weight: 700;
                 }
                 .modal-text-col h2 {
-                    font-size: 4rem;
+                    font-size: 3.8rem;
                     line-height: 1.1;
                     margin-bottom: 40px;
                     color: white;
                     font-family: var(--font-heading);
                     letter-spacing: -2px;
                 }
-                .description {
-                    color: #999;
-                    font-size: 1.25rem;
-                    line-height: 2;
-                    margin-bottom: 60px;
-                    font-weight: 300;
+
+                .category-tag {
+                    color: var(--accent-gold);
+                    font-size: 0.8rem;
+                    text-transform: uppercase;
+                    letter-spacing: 5px;
+                    margin-bottom: 25px;
+                    display: block;
+                    font-weight: 700;
                 }
-                .features-list h4, .features-edit h4 {
+                
+                .specs-container {
+                    margin-bottom: 60px;
+                    padding: 40px;
+                    background: rgba(255, 255, 255, 0.01);
+                    border: 1px solid rgba(255, 255, 255, 0.03);
+                    border-radius: 4px;
+                }
+                .specs-header {
                     font-family: var(--font-heading);
                     text-transform: uppercase;
-                    font-size: 0.9rem;
-                    color: var(--accent-gold);
+                    font-size: 0.8rem;
+                    color: var(--accent-turquoise);
                     margin-bottom: 30px;
                     letter-spacing: 4px;
                 }
-                .features-list ul {
+                .specs-list {
                     list-style: none;
                     padding: 0;
                     margin: 0;
                 }
-                .features-list li {
+                .specs-list li {
                     display: flex;
-                    align-items: center;
-                    gap: 20px;
-                    color: #ccc;
-                    margin-bottom: 18px;
+                    align-items: flex-start;
+                    gap: 15px;
+                    color: #999;
+                    margin-bottom: 20px;
                     font-size: 1rem;
-                    font-weight: 300;
+                    line-height: 1.6;
                 }
-                .accent {
-                    color: var(--accent-turquoise);
+                .btn-cotizar {
+                    background: white;
+                    color: black;
+                    border: none;
+                    padding: 25px;
+                    font-weight: 900;
+                    text-transform: uppercase;
+                    letter-spacing: 4px;
+                    cursor: pointer;
+                    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+                    font-size: 0.85rem;
                 }
+                .btn-cotizar:hover {
+                    background: var(--accent-turquoise);
+                    transform: translateY(-5px);
+                }
+
+                .modal-footer-related {
+                    padding: 60px 80px;
+                    background: rgba(255,255,255,0.01);
+                    border-top: 1px solid rgba(255,255,255,0.05);
+                }
+                .related-header {
+                    font-family: var(--font-heading);
+                    text-transform: uppercase;
+                    font-size: 0.8rem;
+                    color: rgba(255,255,255,0.4);
+                    margin-bottom: 40px;
+                    letter-spacing: 4px;
+                }
+                .related-grid-full {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 30px;
+                }
+                .related-card-footer {
+                    cursor: pointer;
+                    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+                }
+                .related-card-footer:hover {
+                    transform: translateY(-10px);
+                }
+                .related-img-box {
+                    aspect-ratio: 1/1;
+                    overflow: hidden;
+                    border-radius: 4px;
+                    background: #050505;
+                    border: 1px solid rgba(255,255,255,0.05);
+                    margin-bottom: 15px;
+                }
+                .related-img-box img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                }
+                .related-name-footer {
+                    display: block;
+                    font-size: 0.75rem;
+                    color: #fff;
+                    opacity: 0.6;
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                    text-align: center;
+                }
+
                 .wholesaler-info {
                     margin-top: 80px;
                     font-size: 0.8rem;

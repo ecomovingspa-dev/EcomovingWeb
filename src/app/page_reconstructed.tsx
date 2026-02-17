@@ -146,19 +146,19 @@ export default function Home() {
         <div className='container'>
           <h2 className='editorial-title' style={{ textAlign: 'center', marginBottom: '60px' }}>COLECCIÓN <span className='highlight'>MUGS</span></h2>
           <div className='accordion-gallery'>
-            <div className='accordion-item' style={{ backgroundImage: url() }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, 'mug_split_1')}>
+            <div className='accordion-item' style={{ backgroundImage: `url(${assets.mug_split_1})` }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, 'mug_split_1')}>
               <div className='accordion-content'>
                 <div className='accordion-title'>EXECUTIVE</div>
                 <div className='accordion-sub'>Diseño de Autor</div>
               </div>
             </div>
-            <div className='accordion-item' style={{ backgroundImage: url() }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, 'mug_split_2')}>
+            <div className='accordion-item' style={{ backgroundImage: `url(${assets.mug_split_2})` }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, 'mug_split_2')}>
               <div className='accordion-content'>
                 <div className='accordion-title'>MATE</div>
                 <div className='accordion-sub'>Textura Sedosa</div>
               </div>
             </div>
-            <div className='accordion-item' style={{ backgroundImage: url() }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, 'mug_split_3')}>
+            <div className='accordion-item' style={{ backgroundImage: `url(${assets.mug_split_3})` }} onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, 'mug_split_3')}>
               <div className='accordion-content'>
                 <div className='accordion-title'>CHALTEN</div>
                 <div className='accordion-sub'>Aventura Urbana</div>
@@ -193,7 +193,7 @@ export default function Home() {
       {/* 5. CINEMATIC SHOWCASE & SCROLLY */}
       <section className='scrolly-section'>
         <div className='sticky-visual'>
-          <div className='product-stage' style={{ backgroundImage: url(), opacity: 0.8 }} />
+          <div className='product-stage' style={{ backgroundImage: `url(${assets.scrolly1})`, opacity: 0.8 }} />
           <div className='visual-overlay' />
         </div>
         <div className='scroll-content'>
@@ -258,18 +258,19 @@ export default function Home() {
       <EditorSEO isOpen={isEditorSEOOpen} onClose={() => setIsEditorSEOOpen(false)} onContentUpdate={refetchContent} />
       {isBibliotecaOpen && <BibliotecaIA onClose={() => setIsBibliotecaOpen(false)} />}
       <CatalogHub isOpen={isCatalogHubOpen} onClose={() => setIsCatalogHubOpen(false)} />
-      
-      <style jsx>{\`n        .nav-premium { display: flex; justify-content: space-between; align-items: center; padding: 20px 60px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.05); position: fixed; top: 0; width: 100%; z-index: 1000; }
-        .nav-links { display: flex; gap: 20px; }
-        .nav-btn-special { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); color: #888; padding: 10px 20px; border-radius: 4px; font-size: 12px; font-weight: 800; cursor: pointer; display: flex; alignItems: center; gap: 8px; transition: all 0.3s; }
-        .nav-btn-special:hover { color: var(--accent-turquoise); border-color: var(--accent-turquoise); background: rgba(0,212,189,0.05); }
-        .loading-screen { height: 100vh; display: flex; alignItems: center; justifyContent: center; color: var(--accent-gold); font-family: var(--font-heading); font-size: 2rem; letter-spacing: 12px; }
-        .accordion-gallery { display: flex; gap: 10px; height: 600px; width: 100%; }
-        .accordion-item { flex: 1; background-size: cover; background-position: center; transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); cursor: pointer; position: relative; overflow: hidden; border-radius: 8px; filter: grayscale(1) brightness(0.6); }
-        .accordion-item:hover { flex: 4; filter: grayscale(0) brightness(1); }
-        .accordion-content { position: absolute; bottom: 40px; left: 40px; opacity: 0; transform: translateY(20px); transition: all 0.5s ease 0.2s; }
-        .accordion-item:hover .accordion-content { opacity: 1; transform: translateY(0); }
-      \}</style>
+
+      <style jsx>{`
+        .nav-premium {display: flex; justify-content: space-between; align-items: center; padding: 20px 60px; background: rgba(0,0,0,0.8); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.05); position: fixed; top: 0; width: 100%; z-index: 1000; }
+        .nav-links {display: flex; gap: 20px; }
+        .nav-btn-special {background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); color: #888; padding: 10px 20px; border-radius: 4px; font-size: 12px; font-weight: 800; cursor: pointer; display: flex; alignItems: center; gap: 8px; transition: all 0.3s; }
+        .nav-btn-special:hover {color: var(--accent-turquoise); border-color: var(--accent-turquoise); background: rgba(0,212,189,0.05); }
+        .loading-screen {height: 100vh; display: flex; alignItems: center; justifyContent: center; color: var(--accent-gold); font-family: var(--font-heading); font-size: 2rem; letter-spacing: 12px; }
+        .accordion-gallery {display: flex; gap: 10px; height: 600px; width: 100%; }
+        .accordion-item {flex: 1; background-size: cover; background-position: center; transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); cursor: pointer; position: relative; overflow: hidden; border-radius: 8px; filter: grayscale(1) brightness(0.6); }
+        .accordion-item:hover {flex: 4; filter: grayscale(0) brightness(1); }
+        .accordion-content {position: absolute; bottom: 40px; left: 40px; opacity: 0; transform: translateY(20px); transition: all 0.5s ease 0.2s; }
+        .accordion-item:hover .accordion-content {opacity: 1; transform: translateY(0); }
+      `}</style>
     </main>
   );
 }

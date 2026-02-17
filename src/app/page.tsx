@@ -1,34 +1,143 @@
 ﻿'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { useWebContent, SectionContent, GridCell } from '@/hooks/useWebContent';
+import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
+import { useWebContent, SectionContent, GridCell, DynamicSection, WebContent } from '@/hooks/useWebContent';
 import EditorSEO from '@/components/EditorSEO';
 import BibliotecaIA from '@/components/BibliotecaIA';
 import CatalogHub from '@/components/CatalogHub';
 import VisualGallery from '@/components/VisualGallery';
-
 import SectionComposer from '@/components/SectionComposer';
 
+const BentoBlock = ({ block, designMode, assets, handleDrop }: {
+  block: any,
+  designMode: boolean,
+  assets: any,
+  handleDrop: (e: React.DragEvent, id: string) => void
+}) => {
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const images = block.gallery && block.gallery.length > 0 ? block.gallery : [block.image].filter(Boolean);
+  const [spanW, spanH] = (block.span || '4x1').split('x').map((n: string) => parseInt(n) || 1);
+  const isText = block.type === 'text' || block.type === 'both';
+  const isImage = block.type === 'image' || block.type === 'both' || !block.type;
+
+  const shadowStyles = {
+    none: 'none',
+    soft: '0 10px 30px rgba(0,0,0,0.3)',
+    strong: '0 20px 60px rgba(0,0,0,0.6)',
+    neon: `0 0 30px ${block.bgColor}88`
+  };
+
+  useEffect(() => {
+    if (images.length > 1) {
+      const interval = setInterval(() => {
+        setCurrentIdx((prev) => (prev + 1) % images.length);
+      }, 4000); // 4 segundos por diapositiva
+      return () => clearInterval(interval);
+    }
+  }, [images.length]);
+
+  return (
+    <motion.div
+      layoutId={block.id}
+      initial={{ opacity: 0, scale: 0.9 }}
+      whileInView={{ opacity: 1, scale: 1 }}
+      viewport={{ once: true }}
+      style={{
+        gridColumn: `${block.col} / span ${spanW}`,
+        gridRow: `${block.row} / span ${spanH}`,
+        zIndex: block.zIndex || 1,
+        position: 'relative',
+        background: block.gradient
+          ? `linear-gradient(135deg, ${block.bgColor}, ${block.bgColor}dd)`
+          : (block.bgColor || '#111'),
+        borderRadius: block.isCircle ? '50%' : (block.borderRadius || '32px'),
+        aspectRatio: block.isCircle ? '1/1' : 'auto',
+        boxShadow: shadowStyles[block.shadow as keyof typeof shadowStyles] || shadowStyles.none,
+        backdropFilter: block.blur ? `blur(${block.blur})` : 'none',
+        overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        justifyContent: 'center', alignItems: 'center',
+        padding: isText ? '40px' : '0',
+        border: designMode ? '2px solid #00d4bd' : (block.borderColor ? `1px solid ${block.borderColor}` : 'none'),
+        cursor: block.link ? 'pointer' : 'default'
+      }}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => handleDrop(e, block.id)}
+    >
+      {designMode && (
+        <div style={{ position: 'absolute', top: 10, left: 10, zIndex: 10, background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '9px', padding: '2px 6px', borderRadius: '4px', opacity: 0.5 }}>
+          {block.label}
+        </div>
+      )}
+
+      {isImage && (
+        <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+          <AnimatePresence mode="wait">
+            <motion.img
+              key={`${block.id}-${currentIdx}`}
+              initial={{ opacity: 0, scale: 1.1 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 1.2, ease: "easeInOut" }}
+              src={assets[block.id] || images[currentIdx] || 'https://via.placeholder.com/800x600?text=Ecomoving'}
+              style={{
+                width: '100%', height: '100%', objectFit: 'cover',
+                opacity: block.type === 'both' ? 0.4 : 1,
+                zIndex: 1
+              }}
+              alt={block.label}
+            />
+          </AnimatePresence>
+        </div>
+      )}
+
+      {isText && (
+        <div style={{
+          zIndex: 2, color: block.textColor || '#fff',
+          textAlign: block.textAlign || 'center',
+          fontSize: block.fontSize || '1.4rem',
+          fontWeight: 800, width: '100%',
+          textShadow: '0 2px 15px rgba(0,0,0,0.5)',
+          writingMode: block.writingMode || 'horizontal-tb',
+          transform: block.writingMode && block.writingMode !== 'horizontal-tb' ? 'rotate(180deg)' : 'none',
+          padding: '20px'
+        }}>
+          {block.textContent}
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
 export default function Home() {
+  const { scrollYProgress } = useScroll();
+  const scaleX = useSpring(scrollYProgress, {
+    stiffness: 100,
+    damping: 30,
+    restDelta: 0.001
+  });
+
   const { content, loading: contentLoading, refetch: refetchContent, updateSection } = useWebContent();
+  const [previewContent, setPreviewContent] = useState<WebContent | null>(null);
+  const activeContent = previewContent || content;
+
   const [isEditorSEOOpen, setIsEditorSEOOpen] = useState(false);
   const [isBibliotecaOpen, setIsBibliotecaOpen] = useState(false);
   const [isCatalogHubOpen, setIsCatalogHubOpen] = useState(false);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [designMode, setDesignMode] = useState(false);
 
-  const handleComposerSave = async (newContent: any) => {
-    // El Composer envía el objeto WebContent completo con las secciones actualizadas
-    const success = await updateSection('sections' as any, newContent.sections);
-    if (success) {
-      setIsComposerOpen(false);
-      refetchContent();
-    }
-  };
-  const [lockedCells, setLockedCells] = useState<Record<string, boolean>>({});
+  const handleComposerChange = useCallback((newSections: DynamicSection[]) => {
+    setPreviewContent(prev => ({ ...(prev || content), sections: newSections }));
+  }, [content]);
+
+  const handleComposerClose = useCallback(() => {
+    setIsComposerOpen(false);
+    setPreviewContent(null);
+  }, []);
 
   const [assets, setAssets] = useState<Record<string, string>>({
     hero: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?q=80&w=2013&auto=format&fit=crop',
@@ -37,19 +146,11 @@ export default function Home() {
   useEffect(() => {
     const saved = localStorage.getItem('ecomoving_assets');
     if (saved) setAssets(JSON.parse(saved));
-    const savedLocked = localStorage.getItem('ecomoving_locked');
-    if (savedLocked) setLockedCells(JSON.parse(savedLocked));
   }, []);
 
-  const toggleLock = (key: string) => {
-    const newLocked = { ...lockedCells, [key]: !lockedCells[key] };
-    setLockedCells(newLocked);
-    localStorage.setItem('ecomoving_locked', JSON.stringify(newLocked));
-  };
 
   const handleDrop = (e: React.DragEvent, key: string) => {
     e.preventDefault();
-    if (lockedCells[key]) return;
     const url = e.dataTransfer.getData('image_url');
     if (url) {
       const newAssets = { ...assets, [key]: url };
@@ -58,313 +159,243 @@ export default function Home() {
     }
   };
 
-  // Renderizado de Sección Dinámica 12x5
-  const renderDynamicSection = (section: any) => (
-    <section key={section.id} style={{ background: section.bgColor || '#000', padding: '100px 0', overflow: 'hidden' }}>
-      <div className='container'>
-        {/* Cabecera Editorial Estandardizada */}
-        <div style={{ marginBottom: '60px' }}>
-          <span className='editorial-tag' style={{ color: 'var(--accent-gold)', display: 'block', fontSize: '0.8rem', letterSpacing: '4px', textTransform: 'uppercase', marginBottom: '15px', fontWeight: 600 }}>
-            {section.subtitle || 'COLECCIÓN'}
-          </span>
-          <h2 className='editorial-title' style={{ fontSize: '3.5rem', fontFamily: 'var(--font-heading)', color: 'white', marginBottom: '20px', lineHeight: 1.1 }}>
-            {section.title}
-          </h2>
-          <p style={{ color: '#888', fontSize: '1.2rem', maxWidth: '800px', lineHeight: 1.8, marginBottom: '40px' }}>
-            {section.description}
-          </p>
+  // Renderizado de Sección Dinámica Ultra-Premium (Super Tool)
+  const renderDynamicSection = (section: any) => {
+    // Detectamos el color predominante de la sección (el primer bloque con color o el color del título)
+    const sectionAccent = section.blocks?.find((b: any) => b.bgColor)?.bgColor || section.titleColor || '#00d4bd';
 
-          {/* Área Secundaria (Título 2 y Descripción 2) */}
-          {(section.title_2 || section.description_2) && (
-            <div style={{ marginTop: '40px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '40px', maxWidth: '600px' }}>
-              {section.title_2 && (
-                <h3 style={{ fontSize: '1.5rem', color: 'white', marginBottom: '15px', fontFamily: 'var(--font-heading)' }}>
-                  {section.title_2}
+    return (
+      <section key={section.id} id={section.id} style={{ background: section.bgColor || '#000', padding: '120px 0', overflow: 'hidden' }}>
+        <div className='container'>
+          {/* Cabecera Editorial con Animación */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8 }}
+            style={{ marginBottom: '80px' }}
+          >
+            <h2 className='editorial-title' style={{
+              fontSize: section.titleSize || '4.5rem',
+              fontFamily: 'var(--font-heading)',
+              color: section.titleColor || 'white',
+              marginBottom: '30px',
+              lineHeight: 1.1,
+              position: 'relative',
+              display: 'inline-block'
+            }}>
+              {section.title1}
+              {/* Línea decorativa sincronizada con el color de la sección */}
+              <div style={{
+                position: 'absolute',
+                bottom: '-15px',
+                left: 0,
+                width: '240px',
+                height: '6px',
+                background: `linear-gradient(to right, ${sectionAccent}, transparent)`,
+                borderRadius: '3px'
+              }} />
+            </h2>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: '12px', marginTop: '40px' }}>
+              <p style={{
+                gridColumn: `${section.descCol || 1} / span ${section.descSpan || 12}`,
+                color: section.descColor || '#888',
+                fontSize: section.descSize || '1.2rem',
+                textAlign: section.descAlign || 'left',
+                lineHeight: 1.8,
+                transition: 'all 0.5s ease'
+              }}>
+                {section.paragraph1}
+              </p>
+
+              {section.title2 && (
+                <h3 style={{
+                  fontSize: '1.5rem',
+                  color: section.titleColor || 'white',
+                  marginTop: '40px',
+                  marginBottom: '15px',
+                  opacity: 0.9
+                }}>
+                  {section.title2}
                 </h3>
               )}
-              {section.description_2 && (
-                <p style={{ color: '#666', fontSize: '1rem', lineHeight: 1.6 }}>
-                  {section.description_2}
+              {section.paragraph2 && (
+                <p style={{
+                  maxWidth: '700px',
+                  fontSize: '1.1rem',
+                  color: section.descColor || '#666',
+                  lineHeight: 1.6
+                }}>
+                  {section.paragraph2}
                 </p>
               )}
             </div>
-          )}
-        </div>
+          </motion.div>
 
-        {/* Grilla Maestro 12x5 */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(12, 1fr)',
-          gridAutoRows: '150px',
-          gap: '10px',
-          position: 'relative',
-          padding: '20px',
-          border: designMode ? '1px solid rgba(0,212,189,0.1)' : 'none',
-          minHeight: '750px'
-        }}>
-          {/* Grilla Guía Visual (Coordinate System) */}
-          {designMode && Array.from({ length: 60 }, (_, i) => {
-            const col = (i % 12) + 1;
-            const row = Math.floor(i / 12) + 1;
-            return (
-              <div key={`guide-${i}`} style={{
-                border: '1px solid rgba(0,212,189,0.05)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '8px', color: 'rgba(0,212,189,0.2)', fontFamily: 'monospace'
-              }}>
-                C{col}-R{row}
-              </div>
-            );
-          })}
-
-          {/* Bloques de la Sección */}
-          {(Array.isArray(section.blocks) ? section.blocks : [])
-            .map((block: any) => {
-              const [spanW, spanH] = block.span.split('x').map((n: string) => parseInt(n) || 1);
-              const isText = block.type === 'text' || block.type === 'both';
-              const isImage = block.type === 'image' || block.type === 'both' || !block.type;
-
+          {/* Grilla Maestro 24x4 */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gridAutoRows: 'minmax(75px, auto)',
+            gap: '10px', position: 'relative', padding: '20px',
+            minHeight: '620px', marginBottom: '80px'
+          }}>
+            {designMode && Array.from({ length: 192 }, (_, i) => {
+              const col = (i % 24) + 1;
+              const row = Math.floor(i / 24) + 1;
               return (
-                <div
-                  key={block.id}
-                  style={{
-                    gridColumn: `${block.col} / span ${spanW}`,
-                    gridRow: `${block.row} / span ${spanH}`,
-                    zIndex: block.zIndex || 1,
-                    position: 'relative',
-                    border: designMode ? '2px solid var(--accent-turquoise)' : 'none',
-                    background: block.bgColor || '#111',
-                    overflow: 'hidden',
-                    transition: 'all 0.3s ease',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    padding: isText ? '40px' : '0'
-                  }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDrop(e, block.id)}
-                >
-                  {designMode && (
-                    <div style={{ position: 'absolute', top: 5, left: 5, zIndex: 10, background: 'rgba(0,212,189,0.8)', color: 'black', fontSize: '10px', padding: '2px 5px', fontWeight: 'bold' }}>
-                      {block.label} (Z:{block.zIndex})
-                    </div>
-                  )}
-
-                  {isImage && (
-                    <img
-                      src={assets[block.id] || block.image || 'https://via.placeholder.com/600x400?text=Ecomoving+Item'}
-                      style={{
-                        position: isText ? 'absolute' : 'relative',
-                        inset: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        opacity: block.type === 'both' ? 0.4 : 1,
-                        zIndex: 1
-                      }}
-                      alt={block.label}
-                    />
-                  )}
-
-                  {isText && (
-                    <div style={{
-                      zIndex: 2,
-                      color: block.textColor || '#fff',
-                      textAlign: 'center',
-                      fontSize: '1.25rem',
-                      fontWeight: 700,
-                      lineHeight: 1.4,
-                      wordBreak: 'break-word',
-                      textShadow: block.type === 'both' ? '0 2px 10px rgba(0,0,0,0.8)' : 'none'
-                    }}>
-                      {block.textContent}
-                    </div>
-                  )}
+                <div key={`guide-${i}`} style={{
+                  gridColumn: col, gridRow: row,
+                  border: '1px dashed rgba(0, 212, 189, 0.15)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '8px', color: 'rgba(255,255,255,0.25)', pointerEvents: 'none',
+                  minHeight: '75px'
+                }}>
+                  C{col}-R{row}
                 </div>
               );
             })}
-        </div>
-      </div>
-    </section>
-  );
 
-  // Utilidad para asegurar que las secciones siempre sean un array válido
-  const getSafeSections = (data: any) => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    if (typeof data === 'object') return Object.values(data);
-    return [];
+            {(section.blocks || []).map((block: any) => (
+              <BentoBlock
+                key={block.id}
+                block={block}
+                designMode={designMode}
+                assets={assets}
+                handleDrop={handleDrop}
+              />
+            ))}
+          </div>
+
+          <VisualGallery
+            images={section.gallery}
+            accentColor={sectionAccent}
+          />
+        </div>
+      </section>
+    );
   };
 
-  if (contentLoading) return <div className='loading-screen'>ECOMOVING...</div>;
+  const sections = useMemo(() => {
+    const raw = activeContent.sections;
+    const array = Array.isArray(raw) ? raw : (typeof raw === 'object' ? Object.values(raw) : []);
+
+    const categoryOrder = [
+      'ECOLOGICOS',
+      'BOTELLAS, MUG Y TAZAS',
+      'CUADERNOS, LIBRETAS Y MEMO SET',
+      'MOCHILAS, BOLSOS Y MORRALES',
+      'BOLÍGRAFOS',
+      'ACCESORIOS'
+    ];
+
+    return [...array].sort((a: any, b: any) => {
+      const indexA = categoryOrder.findIndex(cat => (a.title1 || a.title || '').toUpperCase().includes(cat));
+      const indexB = categoryOrder.findIndex(cat => (b.title1 || b.title || '').toUpperCase().includes(cat));
+
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+
+      return (a.order || 0) - (b.order || 0);
+    });
+  }, [activeContent.sections]);
+
+  if (contentLoading) return <div className='loading-screen'>ECOMOVING SPA</div>;
 
   return (
-    <main style={{ backgroundColor: '#0a0a0a' }}>
-      <nav className='nav-premium'>
-        <div className='nav-brand'>ECOMOVING</div>
-        <div className='nav-links'>
-          <button className='nav-btn-special' onClick={() => setIsCatalogHubOpen(true)}><Layout size={18} /> HUB</button>
-          <button className='nav-btn-special' onClick={() => setIsBibliotecaOpen(true)}><ImageIcon size={18} /> IA</button>
-          <button className='nav-btn-special' onClick={() => setIsEditorSEOOpen(true)}><FileText size={18} /> SEO</button>
-          <button className='nav-btn-special' onClick={() => setDesignMode(!designMode)}><Crop size={18} /> {designMode ? 'VISTA FINAL' : 'DISEÑO'}</button>
-          <button className='nav-btn-special' onClick={() => setIsComposerOpen(true)}><Layers size={18} /> COMPOSER</button>
+    <main style={{ backgroundColor: '#050505', color: 'white', minHeight: '100vh' }}>
+      <motion.div
+        style={{
+          position: 'fixed', top: 0, left: 0, right: 0, height: '4px',
+          background: 'linear-gradient(to right, #00d4bd, #efb810)',
+          transformOrigin: '0%', zIndex: 2000,
+          scaleX
+        }}
+      />
+
+      <nav className='nav-master'>
+        <div className='logo-brand'>
+          <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img" />
+        </div>
+        <div className='nav-actions' style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={() => setIsCatalogHubOpen(true)} className='nav-btn'><Layout size={16} /> HUB</button>
+          <button onClick={() => setIsBibliotecaOpen(true)} className='nav-btn'><ImageIcon size={16} /> IA</button>
+          <button onClick={() => setIsComposerOpen(true)} className='nav-btn'><Layers size={16} /> COMPOSER</button>
+          <button onClick={() => setIsEditorSEOOpen(true)} className='nav-btn'><FileText size={16} /> SEO</button>
+          <button onClick={() => setDesignMode(!designMode)} className='nav-btn'><Crop size={16} /> {designMode ? 'VISTA FINAL' : 'DISEÑO'}</button>
         </div>
       </nav>
 
-      {/* 1. HERO */}
-      <section className='hero-wrapper' onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, 'hero')}>
-        <div className='hero-bg-image-container'>
-          <img src={content.hero.background_image || assets.hero} className='hero-bg-image' alt='Ecomoving Hero' />
-          <div className='visual-overlay' />
+      <section className='hero-premium' onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, 'hero')} style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+          <img src={activeContent.hero.background_image || assets.hero} alt="Ecomoving" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, transparent 20%, #000 100%)' }} />
         </div>
-        <div className='hero-content reveal'>
-          <h1 className='hero-title'>{content.hero.title}</h1>
-          <p className='hero-subtitle'>{content.hero.subtitle}</p>
-          <Link href={content.hero.cta_link} className='btn-turquoise'>{content.hero.cta_text}</Link>
+        <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', maxWidth: '1000px', padding: '0 20px' }}>
+          <motion.h1
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 1 }}
+            style={{ fontSize: '5rem', fontFamily: 'var(--font-heading)', lineHeight: 1, marginBottom: '20px' }}
+          >
+            {(activeContent.hero as any).title1 || (activeContent.hero as any).title}
+          </motion.h1>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1, delay: 0.5 }}
+            style={{ fontSize: '1.5rem', color: '#888', marginBottom: '40px', letterSpacing: '2px' }}
+          >
+            {(activeContent.hero as any).paragraph1 || (activeContent.hero as any).subtitle}
+          </motion.p>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
+            <Link href={activeContent.hero.cta_link} className='cta-luxury' style={{ display: 'inline-block', padding: '15px 40px', background: '#00d4bd', color: '#000', fontWeight: 900, borderRadius: '50px', letterSpacing: '2px', textDecoration: 'none' }}>
+              {activeContent.hero.cta_text}
+            </Link>
+          </motion.div>
         </div>
       </section>
 
-      {/* 2. SECCIONES DINÁMICAS */}
-      {getSafeSections(content.sections)
-        .sort((a, b) => (a.order || 0) - (b.order || 0))
-        .map(section => renderDynamicSection(section))}
+      {sections.map(s => renderDynamicSection(s))}
 
-      {/* 8. FOOTER */}
-      <footer className='footer-minimal'>
-        <div className='reveal'>
-          <h2 className='footer-brand'>ECOMOVING</h2>
-          <p style={{ marginTop: '20px', color: '#666', fontSize: '0.9rem', letterSpacing: '2px' }}>
-            SANTIAGO, CHILE<br />
-            CONTACTO@ECOMOVING.CLUB
-          </p>
+      <footer style={{ padding: '80px 0', textAlign: 'center', borderTop: '1px solid #111', background: '#000' }}>
+        <div style={{ marginBottom: '20px' }}>
+          <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img-footer" />
         </div>
-        <div className='copyright reveal'>
-          &copy; 2026 ECOMOVING SPA. TODOS LOS DERECHOS RESERVADOS.
-        </div>
+        <div style={{ fontSize: '0.8rem', color: '#555', letterSpacing: '4px', marginBottom: '30px' }}>CHILE &bull; SUSTENTABILIDAD &bull; DISEÑO</div>
+        <div style={{ fontSize: '0.7rem', color: '#333' }}>© 2026 TODOS LOS DERECHOS RESERVADOS</div>
       </footer>
 
-      {/* PANELS OVERLAYS */}
+      <SectionComposer
+        isOpen={isComposerOpen}
+        onClose={handleComposerClose}
+        content={content}
+        onSave={(newSections) => {
+          updateSection('sections', newSections);
+          handleComposerClose();
+        }}
+        onChange={handleComposerChange}
+      />
       <EditorSEO isOpen={isEditorSEOOpen} onClose={() => setIsEditorSEOOpen(false)} onContentUpdate={refetchContent} />
       {isBibliotecaOpen && <BibliotecaIA onClose={() => setIsBibliotecaOpen(false)} />}
       <CatalogHub isOpen={isCatalogHubOpen} onClose={() => setIsCatalogHubOpen(false)} />
-      <SectionComposer
-        isOpen={isComposerOpen}
-        onClose={() => setIsComposerOpen(false)}
-        content={content}
-        onSave={handleComposerSave}
-      />
 
-      <style jsx>{`
-        .nav-premium {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 20px 60px;
-          background: rgba(10,10,10,0.85);
-          backdrop-filter: blur(20px);
+      <style jsx global>{`
+        .nav-master {
+          position: fixed; top: 0; width: 100%; z-index: 1000;
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 20px 50px; background: rgba(0,0,0,0.8); backdrop-filter: blur(15px);
           border-bottom: 1px solid rgba(255,255,255,0.05);
-          position: fixed;
-          top: 0;
-          width: 100%;
-          z-index: 1000;
         }
-        .nav-brand {
-          font-family: var(--font-heading);
-          font-size: 1.5rem;
-          letter-spacing: 5px;
-          color: white;
+        .logo-brand { font-family: var(--font-heading); letter-spacing: 6px; font-weight: 900; }
+        .nav-btn {
+          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+          color: #aaa; padding: 8px 16px; border-radius: 4px; font-size: 11px;
+          cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.3s;
         }
-        .nav-links { display: flex; gap: 15px; }
-        .nav-btn-special {
-          background: rgba(255,255,255,0.02);
-          border: 1px solid rgba(255,255,255,0.08);
-          color: #888;
-          padding: 10px 18px;
-          border-radius: 4px;
-          font-size: 11px;
-          font-weight: 900;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          transition: all 0.3s;
-          letter-spacing: 2px;
-        }
-        .nav-btn-special:hover {
-          color: var(--accent-turquoise);
-          border-color: var(--accent-turquoise);
-          background: rgba(0,212,189,0.05);
-          transform: translateY(-2px);
-        }
-        .loading-screen {
-          height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: var(--accent-gold);
-          font-family: var(--font-heading);
-          font-size: 2rem;
-          letter-spacing: 12px;
-          background: #000;
-        }
-        .visual-overlay {
-          position: absolute;
-          inset: 0;
-          background: radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.4) 100%);
-          pointer-events: none;
-        }
-        /* --- Sección Header --- */
-        .section-header {
-          margin-bottom: 50px;
-        }
-        .section-desc {
-          color: #888;
-          font-size: 1.1rem;
-          max-width: 700px;
-          line-height: 1.8;
-          margin-top: 15px;
-        }
-        /* --- Grilla de Diseño 12×3 --- */
-        .section-design-grid {
-          display: grid;
-          grid-template-columns: repeat(12, 1fr);
-          grid-template-rows: repeat(3, 200px);
-          gap: 0;
-          width: 100%;
-        }
-        .design-cell {
-          position: relative;
-          min-height: 200px;
-          border: 1px solid transparent;
-          transition: all 0.3s ease;
-          overflow: hidden;
-        }
-        /* --- Modo Diseño Activo --- */
-        .design-active .design-cell {
-          border: 1px solid rgba(0, 212, 189, 0.25);
-          background: rgba(0, 212, 189, 0.02);
-        }
-        .design-active .design-cell:hover {
-          border-color: var(--accent-turquoise);
-          background: rgba(0, 212, 189, 0.08);
-          box-shadow: inset 0 0 30px rgba(0, 212, 189, 0.1);
-        }
-        .cell-coord {
-          position: absolute;
-          top: 4px;
-          left: 4px;
-          background: rgba(0, 212, 189, 0.85);
-          color: #000;
-          font-size: 9px;
-          font-weight: 900;
-          padding: 2px 6px;
-          border-radius: 2px;
-          z-index: 10;
-          pointer-events: none;
-          letter-spacing: 1px;
-          font-family: monospace;
-        }
+        .nav-btn:hover { color: #00d4bd; border-color: #00d4bd; }
+        .cta-luxury:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(0,212,189,0.4); }
+        .loading-screen { height: 100vh; background: #000; color: #00d4bd; display: flex; align-items: center; justify-content: center; font-size: 2rem; letter-spacing: 15px; font-family: var(--font-heading); }
       `}</style>
     </main>
   );

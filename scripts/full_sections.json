@@ -1,0 +1,73 @@
+[
+  {
+    "id": "section_1770856178934",
+    "order": 1,
+    "title": "Ecomoving: Regalos Corporativos Exclusivos Chile",
+    "blocks": [
+      {
+        "id": "block_1770856220119",
+        "col": 1,
+        "row": 1,
+        "span": "6x5",
+        "image": "",
+        "label": "NUEVO BLOQUE",
+        "zIndex": 1
+      },
+      {
+        "id": "block_1770856462223",
+        "col": 10,
+        "row": 1,
+        "span": "8x2",
+        "image": "",
+        "label": "NUEVO BLOQUE",
+        "zIndex": 2
+      },
+      {
+        "id": "block_1770856619807",
+        "col": 10,
+        "row": 4,
+        "span": "8x2",
+        "image": "",
+        "label": "NUEVO BLOQUE",
+        "zIndex": 3
+      },
+      {
+        "id": "block_1770857574162",
+        "col": 6,
+        "row": 2,
+        "span": "5x3",
+        "type": "text",
+        "image": "",
+        "label": "NUEVO BLOQUE",
+        "zIndex": 2,
+        "bgColor": "#72daad",
+        "textContent": "En Ecomoving, ofrecemos **regalos corporativos** premium y **merchandising empresarial** de alta calidad para fortalecer la imagen de tu marca. Impresiona a tus empleados y clientes con **productos promocionales** exclusivos, desde elegantes mugs hasta sofisticados cuadernos, diseñados para dejar una huella duradera."
+      }
+    ],
+    "bgColor": "#050505",
+    "title_2": "",
+    "subtitle": "",
+    "description": "Descubre en Ecomoving el merchandising corporativo ideal para tu empresa. Regalos originales y de alta calidad para fortalecer tu marca y agradecer a tus colaboradores y clientes en Chile."
+  },
+  {
+    "id": "section_1770864212341",
+    "order": 2,
+    "title": "NUEVA SECCIÓN SEO",
+    "blocks": [
+      {
+        "id": "block_1770864269110",
+        "col": 4,
+        "row": 2,
+        "span": "4x4",
+        "image": "",
+        "label": "NUEVO BLOQUE",
+        "zIndex": 1,
+        "bgColor": "#3c609a"
+      }
+    ],
+    "bgColor": "#000000",
+    "title_2": "",
+    "subtitle": "",
+    "description": "Descripción optimizada para palabras clave orgánicas."
+  }
+]

@@ -191,11 +191,29 @@ p {
 }
 
 .brand-logo {
-  font-family: var(--font-heading);
-  font-size: 1.5rem;
-  color: white;
-  letter-spacing: 3px;
+  display: flex;
+  align-items: center;
   text-decoration: none;
+}
+
+.logo-img {
+  height: auto;
+  width: auto;
+  max-height: 35px;
+  object-fit: contain;
+  transition: transform 0.3s ease;
+}
+
+.logo-img:hover {
+  transform: scale(1.05);
+}
+
+.logo-img-footer {
+  height: auto;
+  width: auto;
+  max-height: 50px;
+  object-fit: contain;
+  margin-bottom: 20px;
 }
 
 .nav-links {

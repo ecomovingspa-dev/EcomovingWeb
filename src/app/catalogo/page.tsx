@@ -3,6 +3,7 @@
 import React from 'react';
 import ProductCatalog from '@/components/ProductCatalog';
 import MediaSidebar from '@/components/MediaSidebar';
+import CatalogLeadMagnet from '@/components/CatalogLeadMagnet';
 import Link from 'next/link';
 import { Search, Settings } from 'lucide-react';
 
@@ -14,7 +15,9 @@ export default function CatalogPage() {
         <main style={{ backgroundColor: '#050505', minHeight: '100vh' }}>
             {/* Header del Catálogo */}
             <nav className="nav-premium">
-                <Link href="/" className="brand-logo">ECOMOVING</Link>
+                <Link href="/" className="brand-logo">
+                    <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img" />
+                </Link>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '25px' }}>
                     <Link href="/" className="nav-item" style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase' }}>Volver a Inicio</Link>
 
@@ -56,15 +59,17 @@ export default function CatalogPage() {
                 </div>
             </nav>
 
-            <div style={{ paddingTop: '0px' }}>
+            <div style={{ paddingTop: '60px' }}>
                 <ProductCatalog adminMode={isAdmin} externalSearch={search} />
             </div>
 
+            <CatalogLeadMagnet />
+
             <footer className="footer-minimal">
                 <div>
-                    <h2 className="footer-brand">CATÁLOGO DIGITAL</h2>
+                    <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img-footer" />
                     <p style={{ marginTop: '20px', color: '#666', fontSize: '0.9rem' }}>
-                        Curatoría Exclusiva para Empresas<br />
+                        Catálogo Exclusivo para Empresas<br />
                         Ecomoving Premium
                     </p>
                 </div>

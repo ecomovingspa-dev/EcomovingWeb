@@ -1,9 +1,11 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Search, Trash2, Layers, Loader2, Save, Image as ImageIcon, Check, Star, RefreshCw, Plus } from 'lucide-react';
+import { X, Search, Trash2, Layers, Loader2, Save, Image as ImageIcon, Check, Star, RefreshCw, Plus, Sparkles, Send, Globe, RotateCw, FlipHorizontal, Maximize2, Minimize2, Square, RectangleHorizontal, RectangleVertical, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { generateMarketingAI, generateWebAI, generateSEOFilenameAI, MarketingContent, WebSectionContent, getMarketingHTMLTemplate } from '@/lib/gemini';
+import { useWebContent } from '@/hooks/useWebContent';
 
 interface PendingProduct {
     id: string;
@@ -32,10 +34,10 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     const [selectedWholesaler, setSelectedWholesaler] = useState('Todos');
     const [pendingProducts, setPendingProducts] = useState<PendingProduct[]>([]);
     const [selectedProduct, setSelectedProduct] = useState<PendingProduct | null>(null);
-    const [activeImage, setActiveImage] = useState<string | null>(null);
+
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const [customCategories, setCustomCategories] = useState<string[]>(['MUG', 'BOTELLAS', 'CUADERNOS Y LIBRETAS', 'MOCHILAS', 'TECNOLOGÃA', 'BOLÃGRAFOS']);
+    const [customCategories, setCustomCategories] = useState<string[]>(['ECOLÓGICOS', 'BOTELLAS, MUGS Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS']);
     const [isAddingCategory, setIsAddingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [isAddingNew, setIsAddingNew] = useState(false);
@@ -43,32 +45,109 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         name: '',
         original_description: '',
         images: [],
-        wholesaler: 'Stocksur', // Default, se actualizarÃ¡ al abrir
-        category: 'MUG',
+        wholesaler: 'ZECAT', // Default
+        category: 'BOTELLA, MUG Y TAZA',
         external_id: '',
         is_premium: false,
         seo_title: '',
         seo_keywords: '',
         seo_description: '',
         for_marketing: false,
-        technical_specs: [] // Usaremos esto para las caracterÃ­sticas
+        technical_specs: [] // Usaremos esto para las caracterÍsticas
     });
-    const [activeManualImage, setActiveManualImage] = useState<string | null>(null);
+
+    const handleAddCategory = () => {
+        if (!newCategoryName.trim()) return;
+        const normalized = newCategoryName.trim().toUpperCase();
+        if (!customCategories.includes(normalized)) {
+            setCustomCategories(prev => [...prev, normalized]);
+        }
+        setNewCategoryName('');
+        setIsAddingCategory(false);
+    };
+    const [activeManualImage, setActiveManualImage] = useState<string | null>(null); // Para nuevo producto
+    const [catalogViewerImage, setCatalogViewerImage] = useState<string | null>(null); // LOCAL: Used strictly for viewing in Catalog tab
+    const [activeImage, setActiveImage] = useState<string | null>(null); // GLOBAL: Used for Hero/Marketing tabs preview
     const [pendingFiles, setPendingFiles] = useState<Record<string, File>>({});
     const [isSaving, setIsSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState<'catalog' | 'gallery'>('catalog');
+    const [activeTab, setActiveTab] = useState<'insumo' | 'catalog' | 'gallery' | 'hero' | 'marketing'>('catalog');
 
-    // Estados para Gestión de Galerías
-    const [selectedGallerySection, setSelectedGallerySection] = useState<string>('mugs');
+    // Estados para Laboratorio de Insumos
+    const [insumoFile, setInsumoFile] = useState<File | null>(null);
+    const [insumoMetadata, setInsumoMetadata] = useState<{
+        originalSize: number;
+        originalWidth: number;
+        originalHeight: number;
+        optimizedSize: number;
+        optimizedWidth: number;
+        optimizedHeight: number;
+        optimizedUrl: string | null;
+        optimizedBlob: Blob | null;
+    } | null>(null);
+    const [insumoTarget, setInsumoTarget] = useState<'web' | 'email'>('web');
+    const [isProcessingInsumo, setIsProcessingInsumo] = useState(false);
+    const [insumoTransform, setInsumoTransform] = useState({
+        zoom: 1,
+        rotation: 0,
+        flipX: false,
+        aspectRatio: 'original' as 'original' | '1:1' | '16:9' | '9:16',
+        offsetX: 0,
+        offsetY: 0
+    });
+    const [isDraggingInsumo, setIsDraggingInsumo] = useState(false);
+    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [insumoAISEOFilename, setInsumoAISEOFilename] = useState<string | null>(null);
+
+    // Estados para GestiÍn de GALERÍAS
+    const [selectedGallerySection, setSelectedGallerySection] = useState<string>('ECOLÓGICOS');
     const [galleryImages, setGalleryImages] = useState<string[]>([]);
     const [uploadingGallery, setUploadingGallery] = useState(false);
-    const [driveFolderId, setDriveFolderId] = useState('');
-    const [isSyncingDrive, setIsSyncingDrive] = useState(false);
-    const [isSyncingZecat, setIsSyncingZecat] = useState(false);
 
-    const wholesalers = ['Todos', 'Stocksur', 'Promoimport', 'ImBlasco', 'Zecat', 'Personalizado'];
+
+
+    // AI CONTENT FACTORY STATE
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [generatedMarketing, setGeneratedMarketing] = useState<MarketingContent | null>(null);
+    const [generatedWeb, setGeneratedWeb] = useState<WebSectionContent | null>(null);
+    const [aiStatus, setAiStatus] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<string>('TODAS');
+    const [isExpandingCategories, setIsExpandingCategories] = useState(false);
+    const specialCategories = ['ECOLÓGICOS', 'BOTELLAS, MUGS Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS'];
+    const { content, updateSection } = useWebContent();
+
+
+
+    const wholesalers = ['Todos', 'CATÁLOGO'];
+
+    const slugifyForSEO = (text: string) => {
+        if (!text) return "";
+        return text
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // Quitar acentos
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)+/g, '') + ".webp";
+    };
 
     const mapProductFromDB = (item: any): PendingProduct => {
+        // Si el item viene de la tabla 'productos' (nueva estructura)
+        if (item.nombre && item.imagen_principal) {
+            return {
+                id: item.id,
+                wholesaler: item.wholesaler || 'Ecomoving',
+                external_id: item.id, // Para productos en vivo usamos el ID como externo
+                name: item.nombre,
+                original_description: item.descripcion || '',
+                images: Array.isArray(item.imagenes_galeria) ? item.imagenes_galeria : [item.imagen_principal],
+                category: item.categoria || 'Otros',
+                is_premium: item.is_premium || false,
+                technical_specs: Array.isArray(item.features) ? item.features : [],
+                found_at: item.created_at || new Date().toISOString(),
+                status: 'approved'
+            };
+        }
+
+        // Si el item viene de 'agent_buffer' (estructura original)
         let specs: string[] = [];
         const ts = item.technical_specs;
 
@@ -110,14 +189,33 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     const fetchBuffer = async () => {
         setLoading(true);
         try {
-            // Si el mayorista seleccionado es "CatÃ¡logo", mostrar productos aprobados
-            const statusFilter = selectedWholesaler === 'CatÃ¡logo' ? 'approved' : 'pending';
+            let data: any[] | null = [];
+            let error: any = null;
 
-            const { data, error } = await supabase
-                .from('agent_buffer')
-                .select('*')
-                .eq('status', statusFilter)
-                .order('found_at', { ascending: false });
+            if (selectedWholesaler === 'CATÁLOGO') {
+                // Fetch from the new live catalog table
+                const { data: liveData, error: liveError } = await supabase
+                    .from('productos')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                data = liveData;
+                error = liveError;
+            } else {
+                // Si el mayorista es especÍfico o Todos, mostrar pendientes
+                const query = supabase
+                    .from('agent_buffer')
+                    .select('*')
+                    .eq('status', 'pending')
+                    .order('found_at', { ascending: false });
+
+                if (selectedWholesaler !== 'Todos' && selectedWholesaler !== 'CATÁLOGO') {
+                    query.eq('wholesaler', selectedWholesaler);
+                }
+
+                const { data: bufferData, error: bufferError } = await query;
+                data = bufferData;
+                error = bufferError;
+            }
 
             if (error) throw error;
 
@@ -126,10 +224,10 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
             setPendingProducts(mappedData);
             if (mappedData.length > 0 && !selectedProduct) {
                 setSelectedProduct(mappedData[0]);
-                setActiveImage(mappedData[0].images[0]);
+                setCatalogViewerImage(mappedData[0].images[0]);
             }
         } catch (error) {
-            console.error('Error al cargar el buffer:', error);
+            console.error('Error al cargar datos:', error);
         } finally {
             setLoading(false);
         }
@@ -137,22 +235,29 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
     const handleProductSelect = (p: PendingProduct) => {
         setSelectedProduct(p);
-        setActiveImage(p.images[0]);
+        setCatalogViewerImage(p.images[0]);
+        // Limpiar imagen de Insumo para evitar conflictos en Marketing/Hero
+        setActiveImage(null);
     };
 
-    // Funciones para GestiÃ³n de GalerÃ­as
+    // Funciones para GestiÍn de GALERÍAS
     const fetchGallery = async (section: string) => {
         try {
             const { data, error } = await supabase
                 .from('web_contenido')
                 .select('content')
                 .eq('section', section)
-                .single();
+                .maybeSingle();
 
-            if (error) throw error;
+            if (error) {
+                console.warn('Note: Section not found or error fetching:', section);
+                setGalleryImages([]);
+                return;
+            }
+
             setGalleryImages(data?.content?.gallery || []);
         } catch (err) {
-            console.error('Error fetching gallery:', err);
+            console.error('Unexpected error fetching gallery:', err);
             setGalleryImages([]);
         }
     };
@@ -173,9 +278,9 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         try {
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                console.log(`ðŸš€ Optimizando imagen de galerÃ­a ${i + 1}/${files.length}...`);
+                console.log(`?? Optimizando imagen de galería ${i + 1}/${files.length}...`);
 
-                const optimizedBlob = await optimizeImage(file);
+                const { blob: optimizedBlob } = await optimizeImage(file);
                 const fileName = `GALLERY-${selectedGallerySection.toUpperCase()}-${Date.now()}-${i}.webp`;
 
                 const { data: uploadData, error: uploadError } = await supabase.storage
@@ -214,10 +319,10 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
             if (updateError) throw updateError;
 
             setGalleryImages(newImages);
-            alert('Â¡GalerÃ­a actualizada con Ã©xito!');
+            alert('íGalería actualizada con íxito!');
         } catch (err) {
             console.error('Error uploading gallery:', err);
-            alert('Error al subir imÃ¡genes a la galerÃ­a');
+            alert('Error al subir imÍgenes a la galería');
         } finally {
             setUploadingGallery(false);
         }
@@ -253,142 +358,45 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         }
     };
 
-    const handleDriveSync = async () => {
-        if (!driveFolderId) {
-            alert('Por favor ingresa un ID de carpeta de Google Drive');
-            return;
-        }
-        setIsSyncingDrive(true);
-        try {
-            const url = `https://drive.google.com/drive/folders/${driveFolderId}`;
-            const response = await fetch(url);
-            const text = await response.text();
 
-            const regex = /"1[a-zA-Z0-9_-]{32}"/g;
-            const matches = text.match(regex);
 
-            if (!matches) {
-                alert('No se encontraron imágenes públicas en esta carpeta. Asegúrate de que la carpeta sea pública.');
-                return;
-            }
 
-            const uniqueIds = [...new Set(matches.map(m => m.replace(/"/g, '')))];
-            const fileIds = uniqueIds.filter(id => id !== driveFolderId);
-            const driveImages = fileIds.map(id => `https://drive.google.com/thumbnail?id=${id}&sz=w1200`);
-
-            const newImages = [...galleryImages, ...driveImages.filter(img => !galleryImages.includes(img))];
-
-            // Actualizar Supabase
-            const { data: currentData } = await supabase
-                .from('web_contenido')
-                .select('content')
-                .eq('section', selectedGallerySection)
-                .single();
-
-            const updatedContent = {
-                ...(currentData?.content || {}),
-                gallery: newImages
-            };
-
-            const { error } = await supabase
-                .from('web_contenido')
-                .upsert({
-                    section: selectedGallerySection,
-                    content: updatedContent,
-                    updated_by: 'CatalogHub-Drive'
-                }, { onConflict: 'section' });
-
-            if (error) throw error;
-            setGalleryImages(newImages);
-            alert(`¡Sincronización exitosa! Se añadieron ${driveImages.length} imágenes.`);
-        } catch (err) {
-            console.error('Error syncing from drive:', err);
-            alert('Error al sincronizar con Google Drive. Verifica el ID.');
-        } finally {
-            setIsSyncingDrive(false);
-        }
-    };
-
-    const handleZecatSync = async () => {
-        setIsSyncingZecat(true);
-        try {
-            const term = search || 'Mug';
-            const ZECAT_API_BASE = 'https://api.zecat.cl/v1';
-            const ZECAT_TOKEN = 'bWFyaW9AYWdlbmNpYWdyYWZpY2EuY2w6ZXlKMGVYQWlPaUpLVjFRaUxDSmhiR2NpT2lKSVV6STFOaUo5LklqRXljREUzYUhGa2QzWm1PVzUzZW1raS44OTVpbG1IekVEeG1TMzlDLVBuMHM0Qjd6X2dMUml5M25GcnpER250N0VF';
-
-            const response = await fetch(`${ZECAT_API_BASE}/generic_product/autocomplete?name=${term}`, {
-                headers: { 'Authorization': `Bearer ${ZECAT_TOKEN}` }
-            });
-
-            if (!response.ok) throw new Error('Error al conectar con Zecat');
-            const data: { data: any[] } = await response.json();
-
-            let count = 0;
-            for (const item of (data.data || []).slice(0, 10)) {
-                // Para cada producto, obtener detalle para imágenes
-                const detRes = await fetch(`${ZECAT_API_BASE}/generic_product/${item.id}`, {
-                    headers: { 'Authorization': `Bearer ${ZECAT_TOKEN}` }
-                });
-                if (!detRes.ok) continue;
-                const det = await detRes.json();
-                const prod = det.data;
-
-                const { error } = await supabase.from('agent_buffer').upsert({
-                    wholesaler: 'Zecat',
-                    external_id: prod.sku || prod.id,
-                    name: prod.name,
-                    original_description: prod.description || '',
-                    images: (prod.images || []).map((img: { url: string }) => img.url),
-                    technical_specs: prod.attributes || {},
-                    status: 'pending',
-                    category: prod.family?.name || 'Varios'
-                }, { onConflict: 'external_id' });
-
-                if (!error) count++;
-            }
-
-            fetchBuffer();
-            alert(`¡Zecat sincronizado! Se procesaron ${count} productos nuevos.`);
-        } catch (err) {
-            console.error('Error syncing Zecat:', err);
-            alert('Error al sincronizar con Zecat.');
-        } finally {
-            setIsSyncingZecat(false);
-        }
-    };
 
     const handlePublish = async () => {
-        if (!selectedProduct || !activeImage) return;
+        if (!selectedProduct || !catalogViewerImage) return;
 
         setIsSaving(true);
-        let finalMainImage = activeImage;
+        let finalMainImage = catalogViewerImage;
 
         try {
-            // OPTIMIZACIÃ“N DE IMAGEN: Si la imagen es externa o no estÃ¡ optimizada, la procesamos
-            const isExternal = !activeImage.includes('supabase.co');
-            const isBlob = activeImage.startsWith('blob:');
+            // OPTIMIZACIíN DE IMAGEN: Si la imagen es externa o no estÍ optimizada, la procesamos
+            const isExternal = !catalogViewerImage.includes('supabase.co');
+            const isBlob = catalogViewerImage.startsWith('blob:');
 
             if (isExternal || isBlob) {
                 try {
-                    console.log('ðŸš€ Optimizando imagen para publicaciÃ³n...');
+                    console.log('?? Optimizando imagen para publicaciín...');
 
                     let blob: Blob;
                     if (isBlob) {
-                        // Si es un blob local (reciÃ©n cargado), lo obtenemos de los archivos pendientes o del fetch
-                        const file = pendingFiles[activeImage];
+                        // Si es un blob local (reciín cargado), lo obtenemos de los archivos pendientes o del fetch
+                        const file = pendingFiles[catalogViewerImage];
                         if (file) {
-                            blob = await optimizeImage(file);
+                            const result = await optimizeImage(file);
+                            blob = result.blob;
                         } else {
-                            const res = await fetch(activeImage);
+                            const res = await fetch(catalogViewerImage);
                             const originalBlob = await res.blob();
-                            blob = await optimizeImage(new File([originalBlob], 'image.jpg', { type: originalBlob.type }));
+                            const result = await optimizeImage(new File([originalBlob], 'image.jpg', { type: originalBlob.type }));
+                            blob = result.blob;
                         }
                     } else {
-                        // Si es una URL externa (Zecat, Stocksur, etc.)
-                        const res = await fetch(activeImage);
+                        // Si es una URL externa (Stocksur, etc.)
+                        const res = await fetch(catalogViewerImage);
                         if (!res.ok) throw new Error('No se pudo descargar la imagen externa');
                         const originalBlob = await res.blob();
-                        blob = await optimizeImage(new File([originalBlob], 'image.jpg', { type: originalBlob.type }));
+                        const result = await optimizeImage(new File([originalBlob], 'image.jpg', { type: originalBlob.type }));
+                        blob = result.blob;
                     }
 
                     // Subir a Supabase Storage (imagenes-marketing)
@@ -404,10 +412,10 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                         .getPublicUrl(fileName);
 
                     finalMainImage = publicUrl;
-                    console.log('âœ… Imagen optimizada y subida:', finalMainImage);
+                    console.log('? Imagen optimizada y subida:', finalMainImage);
                 } catch (optError) {
-                    console.error('âš ï¸ FallÃ³ la optimizaciÃ³n automÃ¡tica (posible CORS), usando original:', optError);
-                    // No bloqueamos la publicaciÃ³n si falla la optimizaciÃ³n (CORS es comÃºn)
+                    console.error('?? Fallí la optimizaciín automÍtica (posible COR), usando original:', optError);
+                    // No bloqueamos la publicaciÍn si falla la optimizaciÍn (COR es comÍn)
                 }
             }
 
@@ -426,17 +434,18 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                         seo_description: selectedProduct.seo_description,
                         for_marketing: selectedProduct.for_marketing
                     },
-                    images: [finalMainImage, ...selectedProduct.images.filter(i => i !== activeImage)]
+                    images: [finalMainImage, ...selectedProduct.images.filter(i => i !== catalogViewerImage)]
                 })
                 .eq('id', selectedProduct.id);
 
             if (error) throw error;
 
-            // 2. AquÃ­ normalmente se integrarÃ­a al catalog.json (en un flujo automatizado)
+            // 2. Aquí normalmente se integraría al catalog.json (en un flujo automatizado)
             setPendingProducts(prev => prev.filter(p => p.id !== selectedProduct.id));
             setSelectedProduct(null);
+            setCatalogViewerImage(null);
 
-            alert('Â¡Producto Publicado y Optimizado! El sistema lo integrarÃ¡ en el catÃ¡logo.');
+            alert('íProducto Publicado y Optimizado! El sistema lo integrarí en el catílogo.');
         } catch (error) {
             console.error('Error al publicar:', error);
             alert('Error al publicar el producto');
@@ -446,9 +455,9 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     };
 
     const handleCreateManual = async () => {
-        // Validamos TÃ­tulo e ImÃ¡genes
+        // Validamos Título e Imígenes
         if (!newProductForm.original_description || !newProductForm.images || newProductForm.images.length === 0) {
-            alert('El TÃ­tulo y al menos una imagen son obligatorios para guardar.');
+            alert('El Título y al menos una imagen son obligatorios para guardar.');
             return;
         }
 
@@ -465,7 +474,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                     const file = pendingFiles[imgPath];
                     if (file) {
                         try {
-                            const optimizedBlob = await optimizeImage(file);
+                            const { blob: optimizedBlob } = await optimizeImage(file);
                             const fileName = `${Math.random()}-${Date.now()}.webp`;
                             const filePath = `catalog-manual/${fileName}`;
 
@@ -496,16 +505,16 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 ? [mainImageUrl, ...finalImageUrls.filter(url => url !== mainImageUrl)]
                 : finalImageUrls;
 
-            // Construir el objeto de inserciÃ³n explÃ­citamente
+            // Construir el objeto de inserciÍn explícitamente
             const productToInsert = {
                 wholesaler: newProductForm.wholesaler || 'Manual',
                 external_id: newProductForm.external_id || `MAN-${Date.now().toString().slice(-6)}`,
                 name: (newProductForm.name || newProductForm.original_description || '').trim(),
                 original_description: (newProductForm.original_description || '').trim(),
-                // Almacenamos la categorÃ­a dentro de technical_specs ya que la columna no existe en la DB
+                // Almacenamos la categoría dentro de technical_specs ya que la columna no existe en la DB
                 images: orderedImages,
                 technical_specs: {
-                    category: (newProductForm.category || 'OTROS').trim().toUpperCase(),
+                    category: (newProductForm.category || 'OTRO').trim().toUpperCase(),
                     specs: newProductForm.technical_specs || [],
                     is_premium: newProductForm.is_premium || false,
                     seo_title: newProductForm.seo_title || '',
@@ -531,7 +540,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 const formattedProduct = mapProductFromDB(data[0]);
                 setPendingProducts([formattedProduct, ...pendingProducts]);
                 setSelectedProduct(formattedProduct);
-                setActiveImage(formattedProduct.images[0]);
+                setCatalogViewerImage(formattedProduct.images[0]);
                 setIsAddingNew(false);
 
                 // Limpiar ObjectURLs para evitar fugas de memoria
@@ -543,12 +552,12 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                     original_description: '',
                     images: [],
                     wholesaler: 'Manual',
-                    category: 'Otros',
+                    category: 'BOTELLA, MUG Y TAZA',
                     external_id: 'MAN-' + Date.now().toString().slice(-6),
                     is_premium: false,
                     technical_specs: []
                 });
-                alert('Â¡Producto creado exitosamente en el buffer!');
+                alert('íProducto creado exitosamente en el buffer!');
             }
         } catch (error: any) {
             console.error('Error al crear producto:', error);
@@ -559,7 +568,11 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         }
     };
 
-    const optimizeImage = async (file: File): Promise<Blob> => {
+    const optimizeImage = async (
+        file: File,
+        target: 'web' | 'email' = 'web',
+        transform = { zoom: 1, rotation: 0, flipX: false, aspectRatio: 'original' as any, offsetX: 0, offsetY: 0 }
+    ): Promise<{ blob: Blob, width: number, height: number }> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -568,41 +581,292 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 img.src = event.target?.result as string;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-
-                    // ResoluciÃ³n Premium Optimizada (2K para carga instantÃ¡nea)
-                    const MAX_WIDTH = 2048;
-                    let targetWidth = img.width;
-                    let targetHeight = img.height;
-
-                    if (img.width > MAX_WIDTH) {
-                        const scaleFactor = MAX_WIDTH / img.width;
-                        targetWidth = MAX_WIDTH;
-                        targetHeight = img.height * scaleFactor;
-                    }
-
-                    canvas.width = targetWidth;
-                    canvas.height = targetHeight;
-
                     const ctx = canvas.getContext('2d');
                     if (!ctx) return reject('No se pudo obtener el contexto del canvas');
 
-                    // Dibujar con suavizado
+                    // 1. Determinar dimensiones base segÍn Target
+                    const MAX_WIDTH = target === 'web' ? 1600 : 800;
+                    const QUALITY = target === 'web' ? 0.82 : 0.75;
+
+                    let baseWidth = img.width;
+                    let baseHeight = img.height;
+
+                    if (img.width > MAX_WIDTH) {
+                        const scaleFactor = MAX_WIDTH / img.width;
+                        baseWidth = MAX_WIDTH;
+                        baseHeight = img.height * scaleFactor;
+                    }
+
+                    // 2. Determinar dimensiones de salida segÍn Aspect Ratio
+                    let finalWidth = baseWidth;
+                    let finalHeight = baseHeight;
+
+                    if (transform.aspectRatio === '1:1') {
+                        const side = Math.min(baseWidth, baseHeight);
+                        finalWidth = side;
+                        finalHeight = side;
+                    } else if (transform.aspectRatio === '16:9') {
+                        finalHeight = (finalWidth * 9) / 16;
+                    } else if (transform.aspectRatio === '9:16') {
+                        finalWidth = (finalHeight * 9) / 16;
+                    }
+
+                    canvas.width = finalWidth;
+                    canvas.height = finalHeight;
+
+                    // 3. Aplicar Transformaciones
+                    ctx.save();
+                    // El translate incluye ahora el encuadre manual (drag)
+                    ctx.translate((canvas.width / 2) + transform.offsetX, (canvas.height / 2) + transform.offsetY);
+
+                    if (transform.flipX) ctx.scale(-1, 1);
+                    ctx.rotate((transform.rotation * Math.PI) / 180);
+
+                    const drawScale = transform.zoom * (baseWidth / img.width);
+                    ctx.scale(drawScale, drawScale);
+
                     ctx.imageSmoothingEnabled = true;
                     ctx.imageSmoothingQuality = 'high';
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-                    // CompresiÃ³n de paso Ãºnico (85% calidad para balance perfecto peso/visual)
+                    // Dibujar centrando la imagen original
+                    ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                    ctx.restore();
+
                     canvas.toBlob((blob) => {
                         if (blob) {
-                            resolve(blob);
+                            resolve({ blob, width: finalWidth, height: finalHeight });
                         } else {
                             reject('Error al generar blob');
                         }
-                    }, 'image/webp', 0.85);
+                    }, 'image/webp', QUALITY);
                 };
             };
             reader.onerror = (e) => reject(e);
         });
+    };
+
+    // Reprocesar insumo si cambia el target o las transformaciones
+    useEffect(() => {
+        if (insumoFile) {
+            const reprocess = async () => {
+                setIsProcessingInsumo(true);
+                try {
+                    const result = await optimizeImage(insumoFile, insumoTarget, insumoTransform);
+                    const optimizedUrl = URL.createObjectURL(result.blob);
+
+                    setInsumoMetadata(prev => prev ? {
+                        ...prev,
+                        optimizedSize: result.blob.size,
+                        optimizedWidth: Math.round(result.width),
+                        optimizedHeight: Math.round(result.height),
+                        optimizedUrl: optimizedUrl,
+                        optimizedBlob: result.blob
+                    } : null);
+                } catch (err) {
+                    console.error(err);
+                } finally {
+                    setIsProcessingInsumo(false);
+                }
+            };
+            reprocess();
+        }
+    }, [insumoTarget, insumoTransform]);
+
+
+
+
+    const handleInsumoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setInsumoFile(file);
+        setIsProcessingInsumo(true);
+
+        try {
+            setInsumoAISEOFilename(null); // Resetear nombre IA anterior
+            // Obtener dimensiones originales
+            const originalMeta = await new Promise<{ w: number, h: number }>((res) => {
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+                img.onload = () => res({ w: img.width, h: img.height });
+            });
+
+            const result = await optimizeImage(file, insumoTarget);
+
+            const optimizedUrl = URL.createObjectURL(result.blob);
+
+            setInsumoMetadata({
+                originalSize: file.size,
+                originalWidth: originalMeta.w,
+                originalHeight: originalMeta.h,
+                optimizedSize: result.blob.size,
+                optimizedWidth: result.width,
+                optimizedHeight: result.height,
+                optimizedUrl: optimizedUrl,
+                optimizedBlob: result.blob
+            });
+        } catch (err) {
+            console.error(err);
+            alert("Error al procesar insumo");
+        } finally {
+            setIsProcessingInsumo(false);
+        }
+    };
+
+    const handleGenerateInsumoAIFileName = async () => {
+        if (!insumoMetadata?.optimizedUrl) return;
+        setIsProcessingInsumo(true);
+        try {
+            const name = await generateSEOFilenameAI(
+                insumoMetadata.optimizedUrl,
+                selectedGallerySection || selectedProduct?.category || "",
+                selectedProduct?.name || ""
+            );
+            setInsumoAISEOFilename(name);
+        } catch (err: any) {
+            console.error(err);
+            alert(`Error de IA: ${err.message || 'Error desconocido'}`);
+        } finally {
+            setIsProcessingInsumo(false);
+        }
+    };
+
+    const handleRouteInsumo = async (destination: 'catalog' | 'hero' | 'gallery' | 'marketing') => {
+        if (!insumoMetadata?.optimizedUrl || !insumoMetadata.optimizedBlob) return;
+
+        if (destination === 'catalog') {
+            setIsAddingNew(true);
+            const finalImage = insumoMetadata.optimizedUrl!;
+            setNewProductForm(prev => ({
+                ...prev,
+                images: [finalImage]
+            }));
+            setActiveManualImage(finalImage);
+            setActiveTab('catalog');
+        } else if (destination === 'hero') {
+            setIsSaving(true);
+            try {
+                const fileName = insumoAISEOFilename
+                    ? `HERO-${insumoAISEOFilename}-${Date.now()}.webp`
+                    : `HERO-INSUMO-${Date.now()}.webp`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('imagenes-marketing')
+                    .upload(`hero/${fileName}`, insumoMetadata.optimizedBlob!, { contentType: 'image/webp' });
+
+                if (uploadError) throw uploadError;
+
+                const { data: { publicUrl } } = supabase.storage
+                    .from('imagenes-marketing')
+                    .getPublicUrl(`hero/${fileName}`);
+
+                setActiveImage(publicUrl);
+                setActiveTab('hero');
+                setTimeout(() => alert('Imagen subida a la nube con éxito. Ahora selecciona en qué Slide (1, 2 o 3) quieres aplicarla.'), 300);
+            } catch (err) {
+                console.error('Error subiendo imagen para hero:', err);
+                alert('Error al subir imagen al servidor.');
+            } finally {
+                setIsSaving(false);
+            }
+        } else if (destination === 'marketing') {
+            setIsSaving(true);
+            try {
+                // Convertir WebP a JPEG para compatibilidad con Outlook (no soporta WebP)
+                const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d')!;
+                        ctx.drawImage(img, 0, 0);
+                        canvas.toBlob((blob) => {
+                            if (blob) resolve(blob);
+                            else reject(new Error('Error al convertir imagen a JPEG'));
+                        }, 'image/jpeg', 0.90);
+                    };
+                    img.onerror = reject;
+                    img.src = insumoMetadata.optimizedUrl!;
+                });
+
+                const fileName = insumoAISEOFilename
+                    ? `MKT-${insumoAISEOFilename}-${Date.now()}.jpg`
+                    : `MKT-INSUMO-${Date.now()}.jpg`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('imagenes-marketing')
+                    .upload(fileName, jpegBlob, { contentType: 'image/jpeg' });
+
+                if (uploadError) throw uploadError;
+
+                const { data: { publicUrl } } = supabase.storage
+                    .from('imagenes-marketing')
+                    .getPublicUrl(fileName);
+
+                // Usar la URL pública (no el blob: temporal)
+                setActiveImage(publicUrl);
+                // Limpiamos el producto seleccionado para evitar que la IA confunda el contexto
+                setSelectedProduct(null);
+                setActiveTab('marketing');
+            } catch (err) {
+                console.error('Error subiendo imagen para marketing:', err);
+                alert('Error al subir imagen. Usando versión local temporal.');
+                // Fallback: usar blob URL temporal (funciona para previsualizar pero no para enviar)
+                setActiveImage(insumoMetadata.optimizedUrl);
+                setSelectedProduct(null);
+                setActiveTab('marketing');
+            } finally {
+                setIsSaving(false);
+            }
+        } else if (destination === 'gallery') {
+            setIsSaving(true);
+            try {
+                const fileName = insumoAISEOFilename
+                    ? `${insumoAISEOFilename}.webp`
+                    : `IN-GAL-${selectedGallerySection.toUpperCase()}-${Date.now()}.webp`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('imagenes-marketing')
+                    .upload(`galerias/${fileName}`, insumoMetadata.optimizedBlob!, { contentType: 'image/webp' });
+
+                if (uploadError) throw uploadError;
+
+                const { data: { publicUrl } } = supabase.storage
+                    .from('imagenes-marketing')
+                    .getPublicUrl(`galerias/${fileName}`);
+
+                const newGallery = [...galleryImages, publicUrl];
+
+                const { data: currentData } = await supabase
+                    .from('web_contenido')
+                    .select('content')
+                    .eq('section', selectedGallerySection)
+                    .single();
+
+                const updatedContent = {
+                    ...(currentData?.content || {}),
+                    gallery: newGallery
+                };
+
+                await supabase
+                    .from('web_contenido')
+                    .upsert({
+                        section: selectedGallerySection,
+                        content: updatedContent,
+                        updated_by: 'CatalogHub-Insumo'
+                    }, { onConflict: 'section' });
+
+                setGalleryImages(newGallery);
+                setActiveTab('gallery');
+                alert(`íImagen guardada en ${selectedGallerySection.toUpperCase()}!`);
+            } catch (err) {
+                console.error(err);
+                alert('Error al enviar a galería');
+            } finally {
+                setIsSaving(false);
+            }
+        }
     };
 
     const handleOpenNew = () => {
@@ -628,12 +892,16 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     };
 
     const handleSetAsHero = async (slideIndex: number) => {
-        if (!selectedProduct || !activeImage) return;
+        if (!activeImage) {
+            alert('Primero selecciona o carga una imagen');
+            return;
+        }
 
         setIsSaving(true);
         try {
             const section = 'hero';
-            const heroKey = slideIndex === 1 ? 'background_image' : `background_image_${slideIndex}`;
+            // slideIndex llega como 0, 1, 2
+            const heroKey = slideIndex === 0 ? 'background_image' : `background_image_${slideIndex + 1}`;
 
             const { data: currentData } = await supabase
                 .from('web_contenido')
@@ -645,7 +913,8 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
             const updatedContent = {
                 ...currentContent,
                 [heroKey]: activeImage,
-                ...(slideIndex === 1 ? { title: (selectedProduct.seo_title || selectedProduct.name).toUpperCase() } : {})
+                // Solo actualizamos el título si hay un producto seleccionado
+                ...(slideIndex === 0 && selectedProduct ? { title: (selectedProduct.seo_title || selectedProduct.name).toUpperCase() } : {})
             };
 
             const { error } = await supabase
@@ -657,7 +926,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 }, { onConflict: 'section' });
 
             if (error) throw error;
-            alert(`Â¡Slide Hero ${slideIndex} actualizado con Ã©xito!`);
+            alert(`ÍSlide Hero ${slideIndex} actualizado con íxito!`);
         } catch (err) {
             console.error('Error setting hero:', err);
             alert('Error al actualizar el Hero');
@@ -666,6 +935,137 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         }
     };
 
+    const handleGenerateMarketingAI = async () => {
+        if (!selectedProduct && !activeImage) {
+            alert('Selecciona un producto o carga una imagen primero');
+            return;
+        }
+
+        setIsGeneratingAI(true);
+        setAiStatus('?? Gemini está analizando tu producto...');
+        try {
+            // Si hay producto seleccionado, usamos sus datos. Si no, pedimos a la IA que analice la imagen pura.
+            const context = selectedProduct
+                ? `Producto: ${selectedProduct.name}\nDescripción: ${selectedProduct.seo_description || selectedProduct.original_description}\nSpecs: ${selectedProduct.technical_specs?.join(', ')}`
+                : "Analiza la imagen y deduce el producto, creando un copy de marketing atractivo.";
+
+            const imageToUse = activeImage || (selectedProduct?.images?.[0] || null);
+
+            if (!imageToUse) throw new Error("No hay imagen disponible para generar contenido");
+
+            const content = await generateMarketingAI(imageToUse, context);
+            setGeneratedMarketing(content);
+            setAiStatus('? Contenido de Marketing generado');
+        } catch (err: any) {
+            console.error(err);
+            setAiStatus('? Error: ' + err.message);
+        } finally {
+            setIsGeneratingAI(false);
+            setTimeout(() => setAiStatus(''), 3000);
+        }
+    };
+
+    const handleMarketingChange = (field: keyof MarketingContent, value: string) => {
+        if (!generatedMarketing) return;
+        const updated = { ...generatedMarketing, [field]: value };
+        // Sincronizamos el HTML automíticamente al editar texto
+        updated.html = getMarketingHTMLTemplate(updated.subject, updated.part1, updated.part2);
+        setGeneratedMarketing(updated);
+    };
+
+    const handleSaveMarketingAI = async () => {
+        if (!generatedMarketing) return;
+
+        // Permitimos guardar si hay activeImage O selectedProduct
+        const imageToUse = activeImage || (selectedProduct?.images?.[0] || null);
+
+        if (!imageToUse) {
+            alert("No hay imagen para guardar");
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const { data: lastMsg } = await supabase
+                .from("marketing")
+                .select("nombre_envio")
+                .order("nombre_envio", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const nextNumber = (lastMsg?.nombre_envio || 0) + 1;
+            // Asegurar que usamos la imagen correcta en el HTML final
+            const finalHtml = generatedMarketing.html.replace('IMAGE_URL_PLACEHOLDER', imageToUse);
+
+            // Extraer nombre de archivo de la URL para Brevo
+            const nombreImagen = (() => {
+                try {
+                    const urlPath = new URL(imageToUse).pathname;
+                    return urlPath.split('/').pop() || `campaña-${nextNumber}.webp`;
+                } catch {
+                    return `campaña-${nextNumber}.webp`;
+                }
+            })();
+
+            const { error } = await supabase
+                .from("marketing")
+                .insert([{
+                    nombre_envio: nextNumber,
+                    asunto: generatedMarketing.subject,
+                    cuerpo_html: finalHtml,
+                    cuerpo: `${generatedMarketing.part1}\n\n${generatedMarketing.part2}`,
+                    imagen_url: imageToUse,
+                    nombre_imagen: nombreImagen,
+                    activo: true
+                }]);
+
+            if (error) throw error;
+            alert('ÍMensaje de marketing guardado correctamente!');
+            setGeneratedMarketing(null);
+        } catch (err: any) {
+            console.error(err);
+            alert('Error al guardar marketing: ' + err.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleGenerateWebAI = async () => {
+        if (!selectedProduct || !activeImage) {
+            alert('Selecciona una imagen primero');
+            return;
+        }
+        setIsGeneratingAI(true);
+        setAiStatus('?? Generando contenido SEO para la Web...');
+        try {
+            const context = `Producto: ${selectedProduct.name}\nCategoría: ${selectedProduct.category}`;
+            const content = await generateWebAI(activeImage, context);
+            setGeneratedWeb(content);
+            setAiStatus('? Contenido Web generado');
+        } catch (err: any) {
+            console.error(err);
+            setAiStatus('? Error: ' + err.message);
+        } finally {
+            setIsGeneratingAI(false);
+            setTimeout(() => setAiStatus(''), 3000);
+        }
+    };
+
+    const handleApplyWebAI = async () => {
+        if (!generatedWeb || !selectedProduct) return;
+        handleUpdateProduct({
+            seo_title: generatedWeb.title1,
+            seo_description: generatedWeb.paragraph1,
+            // Guardamos el refuerzo SEO en technical_specs para que SectionComposer lo capte
+            technical_specs: [
+                ...selectedProduct.technical_specs,
+                `TITULO_COLOR_BLOCK: ${generatedWeb.title2}`,
+                `DESCRIPCION_COLOR_BLOCK: ${generatedWeb.paragraph2}`
+            ]
+        });
+        alert('Contenido aplicado. Recuerda guardar cambios.');
+        setGeneratedWeb(null);
+    };
 
     const handleSaveChanges = async () => {
         if (!selectedProduct) return;
@@ -679,7 +1079,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                     name: selectedProduct.name,
                     images: [activeImage || selectedProduct.images[0], ...selectedProduct.images.filter(i => i !== (activeImage || selectedProduct.images[0]))],
                     technical_specs: {
-                        category: (selectedProduct.category || 'OTROS').trim().toUpperCase(),
+                        category: (selectedProduct.category || 'OTRO').trim().toUpperCase(),
                         specs: selectedProduct.technical_specs,
                         is_premium: selectedProduct.is_premium,
                         seo_title: selectedProduct.seo_title,
@@ -691,7 +1091,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 .eq('id', selectedProduct.id);
 
             if (error) throw error;
-            alert('Â¡Cambios guardados en el buffer!');
+            alert('ÍCambios guardados en el buffer!');
         } catch (error) {
             console.error('Error al guardar:', error);
             alert('Error al guardar los cambios');
@@ -703,7 +1103,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     const handleReject = async () => {
         if (!selectedProduct) return;
 
-        if (confirm('Â¿EstÃ¡s seguro de que quieres eliminar este producto PERMANENTEMENTE del buffer?')) {
+        if (confirm('ÍEstÍs seguro de que quieres eliminar este producto PERMANENTEMENTE del buffer?')) {
             try {
                 const { error } = await supabase
                     .from('agent_buffer')
@@ -733,32 +1133,28 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     };
 
     const filteredProducts = pendingProducts.filter(p => {
-        const searchLower = search.toLowerCase();
         const matchesWholesaler = selectedWholesaler === 'Todos' || p.wholesaler === selectedWholesaler;
-        const matchesSearch = !search ||
-            p.name.toLowerCase().includes(searchLower) ||
-            p.external_id.toLowerCase().includes(searchLower) ||
-            p.category?.toLowerCase().includes(searchLower);
+        const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+            p.external_id.toLowerCase().includes(search.toLowerCase()) ||
+            p.category?.toLowerCase().includes(search.toLowerCase());
+
         return matchesWholesaler && matchesSearch;
     });
 
-    // Sincronizar selecciÃ³n al filtrar
     useEffect(() => {
         if (!isOpen) return;
 
         if (filteredProducts.length > 0) {
-            // Si el producto seleccionado actual no estÃ¡ en la lista filtrada, seleccionar el primero
             const isStillVisible = filteredProducts.some(p => p.id === selectedProduct?.id);
             if (!isStillVisible) {
                 setSelectedProduct(filteredProducts[0]);
                 setActiveImage(filteredProducts[0].images[0]);
             }
         } else {
-            // Si no hay productos que coincidan, limpiar la selecciÃ³n
             setSelectedProduct(null);
             setActiveImage(null);
         }
-    }, [selectedWholesaler, search, pendingProducts, isOpen]);
+    }, [selectedWholesaler, search, selectedCategory, pendingProducts, isOpen]);
 
     return (
         <AnimatePresence>
@@ -785,7 +1181,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                         exit={{ scale: 0.98, opacity: 0, y: 30 }}
                         transition={{ type: 'spring', damping: 30, stiffness: 200 }}
                         style={{
-                            width: '96vw',
+                            width: '98vw',
                             height: '92vh',
                             backgroundColor: 'rgba(5, 5, 5, 0.9)',
                             backdropFilter: 'blur(40px) saturate(180%)',
@@ -809,33 +1205,39 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
                                 <div style={{ display: 'flex', gap: '30px', borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '30px', marginLeft: '10px' }}>
                                     <button
+                                        onClick={() => setActiveTab('insumo')}
+                                        style={{ background: 'none', border: 'none', color: activeTab === 'insumo' ? 'var(--accent-turquoise)' : '#555', fontSize: '12px', fontWeight: '800', cursor: 'pointer', letterSpacing: '2px', textTransform: 'uppercase', padding: '10px 0', borderBottom: activeTab === 'insumo' ? '2px solid var(--accent-turquoise)' : '2px solid transparent', transition: 'all 0.3s' }}
+                                    >
+                                        Insumo
+                                    </button>
+                                    <button
                                         onClick={() => setActiveTab('catalog')}
                                         style={{ background: 'none', border: 'none', color: activeTab === 'catalog' ? 'var(--accent-turquoise)' : '#555', fontSize: '12px', fontWeight: '800', cursor: 'pointer', letterSpacing: '2px', textTransform: 'uppercase', padding: '10px 0', borderBottom: activeTab === 'catalog' ? '2px solid var(--accent-turquoise)' : '2px solid transparent', transition: 'all 0.3s' }}
                                     >
-                                        GestiOÌn de CataÌlogo
+                                        CATÁLOGO
                                     </button>
                                     <button
                                         onClick={() => setActiveTab('gallery')}
                                         style={{ background: 'none', border: 'none', color: activeTab === 'gallery' ? 'var(--accent-turquoise)' : '#555', fontSize: '12px', fontWeight: '800', cursor: 'pointer', letterSpacing: '2px', textTransform: 'uppercase', padding: '10px 0', borderBottom: activeTab === 'gallery' ? '2px solid var(--accent-turquoise)' : '2px solid transparent', transition: 'all 0.3s' }}
                                     >
-                                        GestiOÌn de GaleriÌas
+                                        GALERÍAS
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('hero')}
+                                        style={{ background: 'none', border: 'none', color: activeTab === 'hero' ? 'var(--accent-turquoise)' : '#555', fontSize: '12px', fontWeight: '800', cursor: 'pointer', letterSpacing: '2px', textTransform: 'uppercase', padding: '10px 0', borderBottom: activeTab === 'hero' ? '2px solid var(--accent-turquoise)' : '2px solid transparent', transition: 'all 0.3s' }}
+                                    >
+                                        Hero
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('marketing')}
+                                        style={{ background: 'none', border: 'none', color: activeTab === 'marketing' ? 'var(--accent-turquoise)' : '#555', fontSize: '12px', fontWeight: '800', cursor: 'pointer', letterSpacing: '2px', textTransform: 'uppercase', padding: '10px 0', borderBottom: activeTab === 'marketing' ? '2px solid var(--accent-turquoise)' : '2px solid transparent', transition: 'all 0.3s' }}
+                                    >
+                                        Marketing
                                     </button>
                                 </div>
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
-                                {isAddingNew && (
-                                    <motion.div
-                                        initial={{ opacity: 0, x: 20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        style={{ display: 'flex', alignItems: 'center', gap: '30px', marginRight: '40px' }}
-                                    >
-                                        <div style={{ width: '1px', height: '30px', backgroundColor: 'rgba(255,255,255,0.1)' }} />
-                                        <h2 style={{ color: 'white', fontFamily: 'var(--font-heading)', fontSize: '24px', margin: 0, letterSpacing: '2px', textTransform: 'uppercase' }}>
-                                            NUEVO PRODUCTO PARA <span style={{ color: 'var(--accent-gold)' }}>{newProductForm.wholesaler}</span>
-                                        </h2>
-                                    </motion.div>
-                                )}
                                 <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', padding: '14px', borderRadius: '50%', cursor: 'pointer', color: '#999', transition: 'all 0.3s' }}>
                                     <X size={26} />
                                 </button>
@@ -843,56 +1245,321 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                         </div>
 
                         {activeTab === 'catalog' && (
-                            <div style={{ padding: '0 60px 18px 60px', backgroundColor: 'rgba(0,0,0,0.2)', display: 'flex', gap: '40px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                    {wholesalers.map(w => (
-                                        <button
-                                            key={w}
-                                            onClick={() => setSelectedWholesaler(w)}
-                                            style={{
-                                                padding: '12px 28px',
-                                                borderRadius: '2px',
-                                                border: '1px solid',
-                                                borderColor: selectedWholesaler === w ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.05)',
-                                                backgroundColor: selectedWholesaler === w ? 'rgba(0, 212, 189, 0.05)' : 'transparent',
-                                                color: selectedWholesaler === w ? 'var(--accent-turquoise)' : '#888',
-                                                fontSize: '14px',
-                                                fontWeight: '600',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                                                textTransform: 'uppercase',
-                                                letterSpacing: '2px',
-                                                fontFamily: 'var(--font-body)'
-                                            }}
-                                        >
-                                            {w}
-                                        </button>
-                                    ))}
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <div style={{ padding: '0 60px 18px 60px', backgroundColor: 'rgba(0,0,0,0.2)', display: 'flex', gap: '40px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                        {wholesalers.map(w => (
+                                            <button
+                                                key={w}
+                                                onClick={() => setSelectedWholesaler(w)}
+                                                style={{
+                                                    padding: '12px 28px',
+                                                    borderRadius: '2px',
+                                                    border: '1px solid',
+                                                    borderColor: selectedWholesaler === w ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.05)',
+                                                    backgroundColor: selectedWholesaler === w ? 'rgba(0, 212, 189, 0.05)' : 'transparent',
+                                                    color: selectedWholesaler === w ? 'var(--accent-turquoise)' : '#888',
+                                                    fontSize: '14px',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '2px',
+                                                    fontFamily: 'var(--font-body)'
+                                                }}
+                                            >
+                                                {w}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div style={{ flex: 1, position: 'relative' }}>
+                                        <Search style={{ position: 'absolute', left: '25px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', color: '#444' }} />
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar por nombre, SKU o categoría..."
+                                            value={search}
+                                            onChange={(e) => setSearch(e.target.value)}
+                                            style={{ width: '100%', padding: '18px 25px 18px 65px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', color: 'white', fontSize: '17px', outline: 'none', letterSpacing: '1px', fontFamily: 'var(--font-body)' }}
+                                        />
+                                    </div>
                                 </div>
-                                <div style={{ flex: 1, position: 'relative' }}>
-                                    <Search style={{ position: 'absolute', left: '25px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', color: '#444' }} />
-                                    <input
-                                        type="text"
-                                        placeholder="Buscar por nombre, SKU o categorÃ­a..."
-                                        value={search}
-                                        onChange={(e) => setSearch(e.target.value)}
-                                        style={{ width: '100%', padding: '18px 25px 18px 65px', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', color: 'white', fontSize: '17px', outline: 'none', letterSpacing: '1px', fontFamily: 'var(--font-body)' }}
-                                    />
-                                </div>
-                                {(selectedWholesaler === 'Zecat' || selectedWholesaler === 'Todos') && (
-                                    <button
-                                        onClick={handleZecatSync}
-                                        disabled={isSyncingZecat}
-                                        style={{ background: 'rgba(212, 175, 55, 0.1)', border: '1px solid var(--accent-gold)', color: 'var(--accent-gold)', padding: '15px 30px', borderRadius: '4px', fontSize: '12px', fontWeight: '900', cursor: 'pointer', letterSpacing: '2px' }}
-                                    >
-                                        {isSyncingZecat ? 'SINCRONIZANDO...' : 'SYNC ZECAT'}
-                                    </button>
-                                )}
                             </div>
                         )}
 
-                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: activeTab === 'catalog' ? '380px 1fr' : '300px 1fr', overflow: 'hidden' }}>
-                            {activeTab === 'catalog' ? (
+                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: activeTab === 'catalog' ? '380px 1fr' : activeTab === 'gallery' ? '300px 1fr' : activeTab === 'insumo' ? '1fr' : '1fr', overflow: 'hidden' }}>
+                            {activeTab === 'insumo' && (
+                                <div className="custom-scroll" style={{ padding: "60px", overflowY: "auto", backgroundColor: "#050505", gridColumn: "1 / -1" }}>
+                                    <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "40px" }}>
+                                            <h2 style={{ color: "white", fontFamily: "var(--font-heading)", fontSize: "32px", margin: 0, letterSpacing: "4px", textTransform: "uppercase" }}>
+                                                LABORATORIO DE <span style={{ color: "var(--accent-gold)" }}>INSUMO</span>
+                                            </h2>
+                                            <p style={{ color: "#444", fontSize: "12px", fontWeight: "700", letterSpacing: "2px" }}>PUERTA DE ENTRADA PREMIUM</p>
+                                        </div>
+
+                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "60px" }}>
+                                            {/* Panel de Carga y PrevisualizaciÍn */}
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "30px" }}>
+                                                <div
+                                                    onMouseDown={(e) => {
+                                                        if (!insumoMetadata?.optimizedUrl) return;
+                                                        setIsDraggingInsumo(true);
+                                                        setDragStart({ x: e.clientX, y: e.clientY });
+                                                    }}
+                                                    onMouseMove={(e) => {
+                                                        if (!isDraggingInsumo) return;
+                                                        const dx = e.clientX - dragStart.x;
+                                                        const dy = e.clientY - dragStart.y;
+                                                        setInsumoTransform(prev => ({
+                                                            ...prev,
+                                                            offsetX: prev.offsetX + dx,
+                                                            offsetY: prev.offsetY + dy
+                                                        }));
+                                                        setDragStart({ x: e.clientX, y: e.clientY });
+                                                    }}
+                                                    onMouseUp={() => setIsDraggingInsumo(false)}
+                                                    onMouseLeave={() => setIsDraggingInsumo(false)}
+                                                    style={{
+                                                        width: "100%",
+                                                        aspectRatio: "16/9",
+                                                        background: "#000",
+                                                        border: "2px dashed rgba(255,255,255,0.05)",
+                                                        borderRadius: "8px",
+                                                        display: "flex",
+                                                        flexDirection: "column",
+                                                        alignItems: "center",
+                                                        justifyContent: "center",
+                                                        position: "relative",
+                                                        overflow: "hidden",
+                                                        cursor: insumoMetadata?.optimizedUrl ? (isDraggingInsumo ? "grabbing" : "grab") : "default"
+                                                    }}
+                                                >
+                                                    {insumoMetadata?.optimizedUrl ? (
+                                                        <React.Fragment>
+                                                            <img src={insumoMetadata.optimizedUrl} style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} alt="Insumo" />
+                                                            <div style={{ position: "absolute", bottom: "10px", right: "10px", background: "rgba(0,0,0,0.5)", padding: "4px 10px", borderRadius: "100px", fontSize: "10px", color: "var(--accent-turquoise)", fontWeight: "800", pointerEvents: "none" }}>
+                                                                PO: {insumoTransform.offsetX.toFixed(0)}x | {insumoTransform.offsetY.toFixed(0)}y
+                                                            </div>
+                                                        </React.Fragment>
+                                                    ) : (
+                                                        <>
+                                                            <ImageIcon size={60} style={{ marginBottom: "20px", opacity: 0.2 }} />
+                                                            <p style={{ fontSize: "10px", color: "#444", fontWeight: "800", letterSpacing: "2px" }}>ARRASTRA O SELECCIONA IMAGEN CRUDA</p>
+                                                        </>
+                                                    )}
+
+                                                    {isProcessingInsumo && (
+                                                        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "15px" }}>
+                                                            <RefreshCw className="animate-spin" size={30} color="var(--accent-turquoise)" />
+                                                            <span style={{ color: "var(--accent-turquoise)", fontSize: "10px", fontWeight: "900", letterSpacing: "2px" }}>OPTIMIZANDO...</span>
+                                                        </div>
+                                                    )}
+                                                    {!insumoMetadata?.optimizedUrl && (
+                                                        <input
+                                                            type="file"
+                                                            accept="image/*"
+                                                            onChange={handleInsumoUpload}
+                                                            style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                                                        />
+                                                    )}
+                                                </div>
+
+                                                <div style={{ display: "flex", gap: "10px" }}>
+                                                    <button
+                                                        onClick={() => setInsumoTarget('web')}
+                                                        style={{ flex: 1, padding: "15px", borderRadius: "4px", border: "1px solid", borderColor: insumoTarget === 'web' ? 'var(--accent-turquoise)' : '#222', background: insumoTarget === 'web' ? 'rgba(0,212,189,0.1)' : 'transparent', color: insumoTarget === 'web' ? 'var(--accent-turquoise)' : '#444', fontSize: "10px", fontWeight: "900", cursor: "pointer", letterSpacing: "1px" }}
+                                                    >
+                                                        TARGET: WEB / CATÁLOGO
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setInsumoTarget('email')}
+                                                        style={{ flex: 1, padding: "15px", borderRadius: "4px", border: "1px solid", borderColor: insumoTarget === 'email' ? 'var(--accent-turquoise)' : '#222', background: insumoTarget === 'email' ? 'rgba(0,212,189,0.1)' : 'transparent', color: insumoTarget === 'email' ? 'var(--accent-turquoise)' : '#444', fontSize: "10px", fontWeight: "900", cursor: "pointer", letterSpacing: "1px" }}
+                                                    >
+                                                        TARGET: CORREO / MARKETING
+                                                    </button>
+                                                </div>
+
+                                                {/* Panel de TransformaciÍn Experta */}
+                                                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", padding: "20px" }}>
+                                                    <h3 style={{ color: "var(--accent-gold)", fontSize: "10px", fontWeight: "900", letterSpacing: "2px", marginBottom: "20px", textTransform: "uppercase" }}>TRANSFORMACIÍN EXPERTA</h3>
+
+                                                    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                                                        {/* Aspect Ratio Row */}
+                                                        <div>
+                                                            <p style={{ fontSize: "9px", color: "#444", fontWeight: "800", marginBottom: "10px", letterSpacing: "1px" }}>FORMATO / ASPECT RATIO</p>
+                                                            <div style={{ display: "flex", gap: "8px" }}>
+                                                                {[
+                                                                    { id: 'original', icon: <ImageIcon size={14} />, label: 'ORIG' },
+                                                                    { id: '1:1', icon: <Square size={14} />, label: '1:1' },
+                                                                    { id: '16:9', icon: <RectangleHorizontal size={14} />, label: '16:9' },
+                                                                    { id: '9:16', icon: <RectangleVertical size={14} />, label: '9:16' }
+                                                                ].map(ratio => (
+                                                                    <button
+                                                                        key={ratio.id}
+                                                                        onClick={() => setInsumoTransform(prev => ({ ...prev, aspectRatio: ratio.id as any }))}
+                                                                        style={{ flex: 1, padding: "10px", background: insumoTransform.aspectRatio === ratio.id ? "rgba(0,212,189,0.1)" : "transparent", border: "1px solid", borderColor: insumoTransform.aspectRatio === ratio.id ? "var(--accent-turquoise)" : "rgba(255,255,255,0.1)", borderRadius: "4px", color: insumoTransform.aspectRatio === ratio.id ? "var(--accent-turquoise)" : "#666", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: "5px" }}
+                                                                    >
+                                                                        {ratio.icon}
+                                                                        <span style={{ fontSize: "8px", fontWeight: "900" }}>{ratio.label}</span>
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Zoom & Rotation Controls */}
+                                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                                                            <div>
+                                                                <p style={{ fontSize: "9px", color: "#444", fontWeight: "800", marginBottom: "10px", letterSpacing: "1px" }}>ZOOM DINíMICO</p>
+                                                                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                                                    <button onClick={() => setInsumoTransform(prev => ({ ...prev, zoom: Math.max(0.1, prev.zoom - 0.1) }))} style={{ padding: "8px", background: "none", border: "1px solid rgba(255,255,255,0.1)", color: "#888", borderRadius: "4px", cursor: "pointer" }}><Minimize2 size={14} /></button>
+                                                                    <span style={{ fontSize: "11px", color: "white", fontWeight: "700", minWidth: "40px", textAlign: "center" }}>{(insumoTransform.zoom * 100).toFixed(0)}%</span>
+                                                                    <button onClick={() => setInsumoTransform(prev => ({ ...prev, zoom: prev.zoom + 0.1 }))} style={{ padding: "8px", background: "none", border: "1px solid rgba(255,255,255,0.1)", color: "#888", borderRadius: "4px", cursor: "pointer" }}><Maximize2 size={14} /></button>
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <p style={{ fontSize: "9px", color: "#444", fontWeight: "800", marginBottom: "10px", letterSpacing: "1px" }}>ROTACIíN</p>
+                                                                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                                                    <button onClick={() => setInsumoTransform(prev => ({ ...prev, rotation: (prev.rotation - 90) % 360 }))} style={{ padding: "8px", background: "none", border: "1px solid rgba(255,255,255,0.1)", color: "#888", borderRadius: "4px", cursor: "pointer" }}><RotateCw size={14} style={{ transform: "scaleX(-1)" }} /></button>
+                                                                    <span style={{ fontSize: "11px", color: "white", fontWeight: "700", minWidth: "40px", textAlign: "center" }}>{insumoTransform.rotation}Í</span>
+                                                                    <button onClick={() => setInsumoTransform(prev => ({ ...prev, rotation: (prev.rotation + 90) % 360 }))} style={{ padding: "8px", background: "none", border: "1px solid rgba(255,255,255,0.1)", color: "#888", borderRadius: "4px", cursor: "pointer" }}><RotateCw size={14} /></button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Mirror & Reset */}
+                                                        <div style={{ display: "flex", gap: "10px" }}>
+                                                            <button
+                                                                onClick={() => setInsumoTransform(prev => ({ ...prev, flipX: !prev.flipX }))}
+                                                                style={{ flex: 1, padding: "12px", background: insumoTransform.flipX ? "rgba(0,212,189,0.1)" : "transparent", border: "1px solid", borderColor: insumoTransform.flipX ? "var(--accent-turquoise)" : "rgba(255,255,255,0.1)", borderRadius: "4px", color: insumoTransform.flipX ? "var(--accent-turquoise)" : "#888", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontSize: "9px", fontWeight: "900", letterSpacing: "1px" }}
+                                                            >
+                                                                <FlipHorizontal size={14} /> ESPEJAR (FLIP X)
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setInsumoTransform({ zoom: 1, rotation: 0, flipX: false, aspectRatio: 'original', offsetX: 0, offsetY: 0 })}
+                                                                style={{ padding: "12px", background: "none", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "4px", color: "#444", cursor: "pointer" }}
+                                                                title="Resetear Transformaciones"
+                                                            >
+                                                                <RefreshCw size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Panel de MÍtricas y Enrutamiento */}
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
+                                                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", padding: "30px" }}>
+                                                    <h3 style={{ color: "var(--accent-gold)", fontSize: "11px", fontWeight: "900", letterSpacing: "3px", marginBottom: "30px", textTransform: "uppercase" }}>MÍTRICA DE RENDIMIENTO</h3>
+
+                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px" }}>
+                                                        <div>
+                                                            <p style={{ fontSize: "9px", color: "#555", fontWeight: "800", marginBottom: "10px", letterSpacing: "1px" }}>PARÍMETRO DE ENTRADA</p>
+                                                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                                    <span style={{ fontSize: "12px", color: "#888" }}>TamaÍo:</span>
+                                                                    <span style={{ fontSize: "12px", color: "white", fontWeight: "700" }}>{insumoMetadata ? (insumoMetadata.originalSize / 1024).toFixed(1) + " KB" : "-"}</span>
+                                                                </div>
+                                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                                    <span style={{ fontSize: "12px", color: "#888" }}>Format:</span>
+                                                                    <span style={{ fontSize: "12px", color: "white", fontWeight: "700" }}>{insumoFile ? insumoFile.type.split('/')[1].toUpperCase() : "-"}</span>
+                                                                </div>
+                                                                <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "8px" }}>
+                                                                    <span style={{ fontSize: "9px", color: "#444", fontWeight: "800", textTransform: "uppercase" }}>Archivo Entrada:</span>
+                                                                    <span style={{ fontSize: "10px", color: "#aaa", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={insumoFile?.name}>
+                                                                        {insumoFile ? insumoFile.name : "-"}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                                    <span style={{ fontSize: "12px", color: "#888" }}>Res:</span>
+                                                                    <span style={{ fontSize: "12px", color: "white", fontWeight: "700" }}>{insumoMetadata ? `${insumoMetadata.originalWidth}x${insumoMetadata.originalHeight}` : "-"}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <p style={{ fontSize: "9px", color: "#555", fontWeight: "800", marginBottom: "10px", letterSpacing: "1px" }}>PARÍMETRO DE SALIDA (OPT.)</p>
+                                                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                                    <span style={{ fontSize: "12px", color: "#888" }}>TamaÍo:</span>
+                                                                    <span style={{ fontSize: "12px", color: "var(--accent-turquoise)", fontWeight: "900" }}>{insumoMetadata ? (insumoMetadata.optimizedSize / 1024).toFixed(1) + " KB" : "-"}</span>
+                                                                </div>
+                                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                                    <span style={{ fontSize: "12px", color: "#888" }}>Format:</span>
+                                                                    <span style={{ fontSize: "12px", color: "var(--accent-turquoise)", fontWeight: "900" }}>WEBP</span>
+                                                                </div>
+                                                                <div style={{ display: "flex", flexDirection: "column", gap: "2px", borderTop: "1px solid rgba(0,212,189,0.1)", paddingTop: "8px", position: 'relative' }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                        <span style={{ fontSize: "9px", color: "var(--accent-turquoise)", fontWeight: "900", textTransform: "uppercase" }}>Nombre SEO (AI):</span>
+                                                                        <button
+                                                                            onClick={handleGenerateInsumoAIFileName}
+                                                                            disabled={isProcessingInsumo}
+                                                                            style={{ background: 'none', border: 'none', color: 'var(--accent-gold)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '9px', fontWeight: '800' }}
+                                                                        >
+                                                                            <Sparkles size={10} /> IA MAGIC
+                                                                        </button>
+                                                                    </div>
+                                                                    <span style={{ fontSize: "10px", color: insumoAISEOFilename ? "var(--accent-gold)" : "var(--accent-turquoise)", fontWeight: "700", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                                        {insumoAISEOFilename ? (insumoAISEOFilename + ".webp") : (insumoFile ? slugifyForSEO(insumoFile.name.split('.')[0]) : "-")}
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                                    <span style={{ fontSize: "12px", color: "#888" }}>Res:</span>
+                                                                    <span style={{ fontSize: "12px", color: "var(--accent-turquoise)", fontWeight: "900" }}>{insumoMetadata ? `${insumoMetadata.optimizedWidth}x${insumoMetadata.optimizedHeight}` : "-"}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {insumoMetadata && (
+                                                        <div style={{ marginTop: "20px", padding: "12px", background: "rgba(0,212,189,0.03)", border: "1px solid rgba(0,212,189,0.1)", borderRadius: "4px", textAlign: "center" }}>
+                                                            <span style={{ color: "var(--accent-turquoise)", fontSize: "12px", fontWeight: "900", letterSpacing: "1px" }}>
+                                                                AHORRO DE PESO: {(((insumoMetadata.originalSize - insumoMetadata.optimizedSize) / insumoMetadata.originalSize) * 100).toFixed(1)}%
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                                    <button
+                                                        disabled={!insumoMetadata?.optimizedUrl}
+                                                        onClick={() => handleRouteInsumo('catalog')}
+                                                        style={{ padding: "12px", background: "white", color: "black", border: "none", borderRadius: "4px", fontSize: "10px", fontWeight: "900", letterSpacing: "1px", cursor: insumoMetadata?.optimizedUrl ? "pointer" : "not-allowed", opacity: insumoMetadata?.optimizedUrl ? 1 : 0.3 }}
+                                                    >
+                                                        ENVIAR A CATÁLOGO
+                                                    </button>
+                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+                                                        <button
+                                                            disabled={!insumoMetadata?.optimizedUrl}
+                                                            onClick={() => handleRouteInsumo('hero')}
+                                                            style={{ padding: "12px", background: "rgba(255,255,255,0.05)", color: "white", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", fontSize: "10px", fontWeight: "900", letterSpacing: "1px", cursor: insumoMetadata?.optimizedUrl ? "pointer" : "not-allowed", opacity: insumoMetadata?.optimizedUrl ? 1 : 0.3 }}
+                                                        >
+                                                            USAR EN HERO
+                                                        </button>
+                                                        <button
+                                                            disabled={!insumoMetadata?.optimizedUrl}
+                                                            onClick={() => handleRouteInsumo('gallery')}
+                                                            style={{ padding: "12px", background: "rgba(255,255,255,0.05)", color: "white", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", fontSize: "10px", fontWeight: "900", letterSpacing: "1px", cursor: insumoMetadata?.optimizedUrl ? "pointer" : "not-allowed", opacity: insumoMetadata?.optimizedUrl ? 1 : 0.3 }}
+                                                        >
+                                                            A GALERÍA
+                                                        </button>
+                                                        <button
+                                                            disabled={!insumoMetadata?.optimizedUrl}
+                                                            onClick={() => handleRouteInsumo('marketing')}
+                                                            style={{ padding: "12px", background: "rgba(255,255,255,0.05)", color: "white", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", fontSize: "10px", fontWeight: "900", letterSpacing: "1px", cursor: insumoMetadata?.optimizedUrl ? "pointer" : "not-allowed", opacity: insumoMetadata?.optimizedUrl ? 1 : 0.3 }}
+                                                        >
+                                                            A MARKETING
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'catalog' && (
                                 <React.Fragment>
                                     {/* Left List */}
                                     <div className="custom-scroll" style={{ borderRight: '1px solid rgba(255,255,255,0.05)', overflowY: 'auto', padding: '32px 40px', backgroundColor: 'rgba(0,0,0,0.2)' }}>
@@ -934,13 +1601,13 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                     transition: 'all 0.3s'
                                                 }}
                                             >
-                                                <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '2px', overflow: 'hidden', backgroundColor: 'black', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                                <div style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '50%', overflow: 'hidden', backgroundColor: 'black', border: '1px solid rgba(255,255,255,0.05)' }}>
                                                     <img src={p.images[0]} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }} />
                                                 </div>
                                                 <div style={{ flex: 1 }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                                                         <span style={{ fontSize: '10px', color: 'var(--accent-gold)', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '2px' }}>{p.wholesaler}</span>
-                                                        <span style={{ color: '#333' }}>â€¢</span>
+                                                        <span style={{ color: '#333' }}>Í</span>
                                                         <span style={{ fontSize: '10px', color: '#555', fontWeight: '500' }}>{p.external_id}</span>
                                                     </div>
                                                     <p style={{ margin: 0, fontSize: '17px', fontWeight: '600', color: 'white', letterSpacing: '0.5px', fontFamily: 'var(--font-heading)', textTransform: 'uppercase' }}>{p.name}</p>
@@ -955,12 +1622,11 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: '1600px', margin: '0 auto', width: '100%' }}>
                                                 <div style={{ height: '20px' }} /> {/* Spacer */}
 
-                                                <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '50px', flex: 1 }}>
-                                                    {/* Columna Izquierda: Visual y Biblioteca */}
+                                                <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '50px', flex: 1 }}>
+                                                    {/* Columna Izquierda: Visual y Biblioteca (Reducida) */}
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
                                                         {/* Hero Viewer Principal */}
                                                         <div>
-                                                            <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '15px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>VISOR DE CURACIÃ“N PREMIUM</label>
                                                             <div style={{
                                                                 width: '100%',
                                                                 aspectRatio: '1/1',
@@ -1016,29 +1682,6 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                     >
                                                                         + URL
                                                                     </button>
-                                                                    <input
-                                                                        type="file"
-                                                                        multiple
-                                                                        accept="image/*"
-                                                                        id="file-upload"
-                                                                        style={{ display: 'none' }}
-                                                                        onChange={(e) => {
-                                                                            const files = e.target.files;
-                                                                            if (!files) return;
-                                                                            const newImages: string[] = [...(newProductForm.images || [])];
-                                                                            const newFileMap = { ...pendingFiles };
-                                                                            for (let i = 0; i < files.length; i++) {
-                                                                                const file = files[i];
-                                                                                const objectUrl = URL.createObjectURL(file);
-                                                                                newImages.push(objectUrl);
-                                                                                newFileMap[objectUrl] = file;
-                                                                            }
-                                                                            setPendingFiles(newFileMap);
-                                                                            setNewProductForm({ ...newProductForm, images: newImages });
-                                                                            if (!activeManualImage && newImages.length > 0) setActiveManualImage(newImages[0]);
-                                                                        }}
-                                                                    />
-                                                                    <label htmlFor="file-upload" style={{ color: 'var(--accent-turquoise)', fontSize: '10px', fontWeight: '800', cursor: 'pointer', letterSpacing: '1px' }}>+ ARCHIVO</label>
                                                                 </div>
                                                             </div>
 
@@ -1058,25 +1701,6 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                             }}
                                                                         >
                                                                             <img src={img} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                                            {i === 0 && (
-                                                                                <div style={{
-                                                                                    position: 'absolute',
-                                                                                    bottom: 0,
-                                                                                    left: 0,
-                                                                                    right: 0,
-                                                                                    background: 'var(--accent-gold)',
-                                                                                    color: 'black',
-                                                                                    fontSize: '7px',
-                                                                                    fontWeight: '900',
-                                                                                    textAlign: 'center',
-                                                                                    padding: '2px 0',
-                                                                                    textTransform: 'uppercase',
-                                                                                    letterSpacing: '1px',
-                                                                                    zIndex: 5
-                                                                                }}>
-                                                                                    PRINCIPAL
-                                                                                </div>
-                                                                            )}
                                                                             {i === 0 && (
                                                                                 <div style={{
                                                                                     position: 'absolute',
@@ -1122,10 +1746,19 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
                                                     {/* Columna Derecha: Metadatos + Specs */}
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                                        {/* Fila 1: Mayorista, SKU y CategorÃ­a */}
-                                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end' }}>
-                                                            <div style={{ width: '200px' }}>
-                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>COÌDIGO / SKU</label>
+                                                        {/* Fila 1: Mayorista, SKU y Categoría */}
+                                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                                                            <div style={{ width: '140px' }}>
+                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>MAYORISTA</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={newProductForm.wholesaler || ''}
+                                                                    onChange={(e) => setNewProductForm({ ...newProductForm, wholesaler: e.target.value })}
+                                                                    style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '15px', color: 'white', fontSize: '15px', outline: 'none' }}
+                                                                />
+                                                            </div>
+                                                            <div style={{ width: '140px' }}>
+                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>CÓDIGO / SKU</label>
                                                                 <input
                                                                     type="text"
                                                                     value={newProductForm.external_id}
@@ -1134,141 +1767,167 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                 />
                                                             </div>
                                                             <div style={{ flex: 1 }}>
-                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>CATEGORÃA</label>
-                                                                <select
-                                                                    value={newProductForm.category}
-                                                                    onChange={(e) => setNewProductForm({ ...newProductForm, category: e.target.value })}
-                                                                    style={{ width: '100%', height: '54px', backgroundColor: 'rgba(0, 212, 189, 0.05)', border: '1px solid var(--accent-turquoise)', padding: '0 15px', color: 'white', borderRadius: '4px', outline: 'none', appearance: 'none', cursor: 'pointer', letterSpacing: '2px', textTransform: 'uppercase', fontSize: '12px', fontWeight: '700' }}
-                                                                >
-                                                                    {customCategories.map(cat => <option key={cat} value={cat} style={{ background: '#0a0a0a' }}>{cat.toUpperCase()}</option>)}
-                                                                </select>
-                                                            </div>
-                                                            <div style={{ width: '120px' }}>
-                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>PREMIUM</label>
-                                                                <button
-                                                                    onClick={() => setNewProductForm({ ...newProductForm, is_premium: !newProductForm.is_premium })}
-                                                                    style={{
-                                                                        width: '100%',
-                                                                        height: '54px',
-                                                                        backgroundColor: newProductForm.is_premium ? 'rgba(0, 212, 189, 0.2)' : 'rgba(255,255,255,0.02)',
-                                                                        border: `1px solid ${newProductForm.is_premium ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.05)'}`,
-                                                                        color: newProductForm.is_premium ? 'var(--accent-turquoise)' : '#555',
-                                                                        borderRadius: '4px',
-                                                                        cursor: 'pointer',
-                                                                        fontSize: '10px',
-                                                                        fontWeight: '900',
-                                                                        transition: 'all 0.3s'
-                                                                    }}
-                                                                >
-                                                                    {newProductForm.is_premium ? 'SÃ' : 'NO'}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* SECCIÃ“N SEO & MARKETING (NUEVO) */}
-                                                        <div style={{ padding: '25px', background: 'rgba(212, 175, 55, 0.03)', borderRadius: '4px', border: '1px solid rgba(212, 175, 55, 0.1)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                <label style={{ fontSize: '11px', color: 'var(--accent-gold)', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>CONFIGURACIÃ“N SEO & MARKETING</label>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                    <span style={{ fontSize: '9px', color: '#555', fontWeight: '700' }}>Â¿APTO PARA CAMPAÃ‘A?</span>
+                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>CATEGORÍAS (USA COMA PARA VARIA)</label>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                    {/* Lista de Categorías Predefinidas */}
+                                                                    <div style={{ position: 'relative', marginBottom: '8px' }}>
+                                                                        <select
+                                                                            value={newProductForm.category || ''}
+                                                                            onChange={(e) => setNewProductForm({ ...newProductForm, category: e.target.value })}
+                                                                            style={{
+                                                                                width: '100%',
+                                                                                padding: '16px 15px',
+                                                                                backgroundColor: 'rgba(255,255,255,0.02)',
+                                                                                border: '1px solid rgba(255,255,255,0.05)',
+                                                                                color: 'white',
+                                                                                fontSize: '11px',
+                                                                                fontWeight: '700',
+                                                                                borderRadius: '4px',
+                                                                                outline: 'none',
+                                                                                textTransform: 'uppercase',
+                                                                                cursor: 'pointer',
+                                                                                appearance: 'none', // Remove default arrow to style validly if desired, or keep it
+                                                                                height: '48px'
+                                                                            }}
+                                                                        >
+                                                                            <option value="" disabled>SELECCIONAR CATEGORÍA...</option>
+                                                                            {customCategories.map(cat => (
+                                                                                <option key={cat} value={cat} style={{ color: 'black' }}>
+                                                                                    {cat}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                        <div style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--accent-turquoise)' }}>
+                                                                            <ChevronRight size={14} style={{ transform: 'rotate(90deg)' }} />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{ width: '120px' }}>
+                                                                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>PREMIUM</label>
                                                                     <button
-                                                                        onClick={() => setNewProductForm({ ...newProductForm, for_marketing: !newProductForm.for_marketing })}
-                                                                        style={{ padding: '4px 12px', borderRadius: '20px', border: '1px solid', borderColor: newProductForm.for_marketing ? 'var(--accent-turquoise)' : '#333', backgroundColor: newProductForm.for_marketing ? 'rgba(0,212,189,0.1)' : 'transparent', color: newProductForm.for_marketing ? 'var(--accent-turquoise)' : '#555', fontSize: '10px', fontWeight: '800', cursor: 'pointer' }}
+                                                                        onClick={() => setNewProductForm({ ...newProductForm, is_premium: !newProductForm.is_premium })}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            height: '54px',
+                                                                            backgroundColor: newProductForm.is_premium ? 'rgba(0, 212, 189, 0.2)' : 'rgba(255,255,255,0.02)',
+                                                                            border: `1px solid ${newProductForm.is_premium ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.05)'}`,
+                                                                            color: newProductForm.is_premium ? 'var(--accent-turquoise)' : '#555',
+                                                                            borderRadius: '4px',
+                                                                            cursor: 'pointer',
+                                                                            fontSize: '10px',
+                                                                            fontWeight: '900',
+                                                                            transition: 'all 0.3s'
+                                                                        }}
                                                                     >
-                                                                        {newProductForm.for_marketing ? 'SÃ, MARKETING READY' : 'NO'}
+                                                                        {newProductForm.is_premium ? 'SÍÍ' : 'NO'}
                                                                     </button>
                                                                 </div>
                                                             </div>
 
-                                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                                                                <div>
-                                                                    <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>TÃTULO SEO (H1 SUGERIDO)</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={newProductForm.seo_title}
-                                                                        onChange={(e) => setNewProductForm({ ...newProductForm, seo_title: e.target.value })}
-                                                                        placeholder="Ej: Mochila Ejecutiva Premium..."
-                                                                        style={{ width: '100%', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: 'white', borderRadius: '2px', fontSize: '13px', outline: 'none' }}
-                                                                    />
+                                                            {/* SECCIÓN SEO & MARKETING (NUEVO) */}
+                                                            <div style={{ padding: '25px', background: 'rgba(212, 175, 55, 0.03)', borderRadius: '4px', border: '1px solid rgba(212, 175, 55, 0.1)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <label style={{ fontSize: '11px', color: 'var(--accent-gold)', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>CONFIGURACIÓN SEO & MARKETING</label>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                        <span style={{ fontSize: '9px', color: '#555', fontWeight: '700' }}>¿APTO PARA CAMPAÑA?</span>
+                                                                        <button
+                                                                            onClick={() => setNewProductForm({ ...newProductForm, for_marketing: !newProductForm.for_marketing })}
+                                                                            style={{ padding: '4px 12px', borderRadius: '20px', border: '1px solid', borderColor: newProductForm.for_marketing ? 'var(--accent-turquoise)' : '#333', backgroundColor: newProductForm.for_marketing ? 'rgba(0,212,189,0.1)' : 'transparent', color: newProductForm.for_marketing ? 'var(--accent-turquoise)' : '#555', fontSize: '10px', fontWeight: '800', cursor: 'pointer' }}
+                                                                        >
+                                                                            {newProductForm.for_marketing ? 'SÍÍ, MARKETING READY' : 'NO'}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                                                                    <div>
+                                                                        <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>TÍTULO SEO (H1 SUGERIDO)</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={newProductForm.seo_title}
+                                                                            onChange={(e) => setNewProductForm({ ...newProductForm, seo_title: e.target.value })}
+                                                                            placeholder="Ej: Mochila Ejecutiva Premium..."
+                                                                            style={{ width: '100%', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: 'white', borderRadius: '2px', fontSize: '13px', outline: 'none' }}
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>KEYWORD</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={newProductForm.seo_keywords}
+                                                                            onChange={(e) => setNewProductForm({ ...newProductForm, seo_keywords: e.target.value })}
+                                                                            placeholder="regalos corporativos, sustentable..."
+                                                                            style={{ width: '100%', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: 'white', borderRadius: '2px', fontSize: '13px', outline: 'none' }}
+                                                                        />
+                                                                    </div>
                                                                 </div>
                                                                 <div>
-                                                                    <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>KEYWORDS</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={newProductForm.seo_keywords}
-                                                                        onChange={(e) => setNewProductForm({ ...newProductForm, seo_keywords: e.target.value })}
-                                                                        placeholder="regalos corporativos, sustentable..."
-                                                                        style={{ width: '100%', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: 'white', borderRadius: '2px', fontSize: '13px', outline: 'none' }}
+                                                                    <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>META DESCRIPCIÓN (INTENCIÓN DE VENTA)</label>
+                                                                    <textarea
+                                                                        value={newProductForm.seo_description}
+                                                                        onChange={(e) => setNewProductForm({ ...newProductForm, seo_description: e.target.value })}
+                                                                        placeholder="Breve descripción..."
+                                                                        style={{ width: '100%', height: '60px', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: '#999', borderRadius: '2px', fontSize: '12px', resize: 'none', outline: 'none' }}
                                                                     />
                                                                 </div>
                                                             </div>
+
+                                                            {/* Fila 2: Título ancho */}
                                                             <div>
-                                                                <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>META DESCRIPCIÃ“N (INTENCIÃ“N DE VENTA)</label>
+                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>TÍTULO DEL PRODUCTO</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={newProductForm.original_description}
+                                                                    onChange={(e) => setNewProductForm({ ...newProductForm, original_description: e.target.value })}
+                                                                    style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '18px', color: 'white', fontSize: '20px', fontWeight: '600', outline: 'none' }}
+                                                                />
+                                                            </div>
+
+                                                            {/* Fila 3: Especificaciones anchas */}
+                                                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '15px', fontWeight: '800', letterSpacing: '2px', textTransform: 'uppercase' }}>ESPECIFICACIONE TÍCNICA COMPLETA</label>
                                                                 <textarea
-                                                                    value={newProductForm.seo_description}
-                                                                    onChange={(e) => setNewProductForm({ ...newProductForm, seo_description: e.target.value })}
-                                                                    placeholder="Breve descripciÃ³n..."
-                                                                    style={{ width: '100%', height: '60px', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: '#999', borderRadius: '2px', fontSize: '12px', resize: 'none', outline: 'none' }}
+                                                                    value={Array.isArray(newProductForm.technical_specs) ? newProductForm.technical_specs.join('\n') : ''}
+                                                                    onChange={(e) => setNewProductForm({ ...newProductForm, technical_specs: e.target.value.split('\n').filter(l => l.trim()) })}
+                                                                    placeholder="Copia aquí la ficha tícnica del proveedor..."
+                                                                    style={{ width: '100%', flex: 1, minHeight: '400px', backgroundColor: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '25px', color: '#ccc', fontSize: '15px', outline: 'none', resize: 'none', lineHeight: '1.8', fontFamily: 'monospace' }}
                                                                 />
                                                             </div>
                                                         </div>
-
-                                                        {/* Fila 2: TÃ­tulo ancho */}
-                                                        <div>
-                                                            <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>TÃTULO DEL PRODUCTO</label>
-                                                            <input
-                                                                type="text"
-                                                                value={newProductForm.original_description}
-                                                                onChange={(e) => setNewProductForm({ ...newProductForm, original_description: e.target.value })}
-                                                                style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '18px', color: 'white', fontSize: '20px', fontWeight: '600', outline: 'none' }}
-                                                            />
-                                                        </div>
-
-                                                        {/* Fila 3: Especificaciones anchas */}
-                                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                                            <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '15px', fontWeight: '800', letterSpacing: '2px', textTransform: 'uppercase' }}>ESPECIFICACIONES TÃ‰CNICAS COMPLETAS</label>
-                                                            <textarea
-                                                                value={Array.isArray(newProductForm.technical_specs) ? newProductForm.technical_specs.join('\n') : ''}
-                                                                onChange={(e) => setNewProductForm({ ...newProductForm, technical_specs: e.target.value.split('\n').filter(l => l.trim()) })}
-                                                                placeholder="Copia aquÃ­ la ficha tÃ©cnica del proveedor..."
-                                                                style={{ width: '100%', flex: 1, minHeight: '400px', backgroundColor: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '25px', color: '#ccc', fontSize: '15px', outline: 'none', resize: 'none', lineHeight: '1.8', fontFamily: 'monospace' }}
-                                                            />
-                                                        </div>
                                                     </div>
-                                                </div>
 
-                                                <div style={{ marginTop: '40px', display: 'flex', gap: '20px', paddingBottom: '40px' }}>
-                                                    <button
-                                                        onClick={handleCreateManual}
-                                                        disabled={isSaving}
-                                                        style={{ flex: 1, backgroundColor: isSaving ? '#333' : 'var(--accent-gold)', color: 'black', border: 'none', padding: '25px', fontSize: '18px', fontWeight: '900', letterSpacing: '4px', cursor: isSaving ? 'not-allowed' : 'pointer', borderRadius: '4px', textTransform: 'uppercase', transition: 'all 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
-                                                        onMouseEnter={(e) => !isSaving && (e.currentTarget.style.transform = 'translateY(-2px)')}
-                                                        onMouseLeave={(e) => !isSaving && (e.currentTarget.style.transform = 'translateY(0)')}
-                                                    >
-                                                        {isSaving ? (
-                                                            <>
-                                                                <Loader2 className="animate-spin" size={24} />
-                                                                PROCESANDO IMAGEN...
-                                                            </>
-                                                        ) : 'GUARDAR PRODUCTO EN EL BUFFER'}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setIsAddingNew(false)}
-                                                        style={{ backgroundColor: 'transparent', color: '#555', border: '1px solid #333', padding: '25px 50px', fontSize: '16px', fontWeight: '700', letterSpacing: '2px', cursor: 'pointer', borderRadius: '4px', textTransform: 'uppercase' }}
-                                                    >
-                                                        CANCELAR
-                                                    </button>
+                                                    <div style={{ marginTop: '40px', display: 'flex', gap: '20px', paddingBottom: '40px' }}>
+                                                        <button
+                                                            onClick={handleCreateManual}
+                                                            disabled={isSaving}
+                                                            style={{ flex: 1, backgroundColor: isSaving ? '#333' : 'var(--accent-gold)', color: 'black', border: 'none', padding: '25px', fontSize: '18px', fontWeight: '900', letterSpacing: '4px', cursor: isSaving ? 'not-allowed' : 'pointer', borderRadius: '4px', textTransform: 'uppercase', transition: 'all 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
+                                                            onMouseEnter={(e) => !isSaving && (e.currentTarget.style.transform = 'translateY(-2px)')}
+                                                            onMouseLeave={(e) => !isSaving && (e.currentTarget.style.transform = 'translateY(0)')}
+                                                        >
+                                                            {isSaving ? (
+                                                                <>
+                                                                    <Loader2 className="animate-spin" size={24} />
+                                                                    PROCESANDO IMAGEN...
+                                                                </>
+                                                            ) : 'GUARDAR PRODUCTO EN EL BUFFER'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setIsAddingNew(false)}
+                                                            style={{ backgroundColor: 'transparent', color: '#555', border: '1px solid #333', padding: '25px 50px', fontSize: '16px', fontWeight: '700', letterSpacing: '2px', cursor: 'pointer', borderRadius: '4px', textTransform: 'uppercase' }}
+                                                        >
+                                                            CANCELAR
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ) : selectedProduct ? (
                                             <div style={{ display: 'flex', flexDirection: 'column', height: '100%', maxWidth: '1600px', margin: '0 auto', width: '100%' }}>
                                                 <div style={{ height: '20px' }} /> {/* Spacer */}
 
-                                                <div style={{ display: 'grid', gridTemplateColumns: '550px 1fr', gap: '60px', flex: 1 }}>
-                                                    {/* Columna Izquierda: Visual y Biblioteca */}
+                                                <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '60px', flex: 1 }}>
+                                                    {/* Columna Izquierda: Visual y Biblioteca (Reducida) */}
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                                         <div>
-                                                            <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '15px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>VISOR DE CURACIÃ“N PREMIUM</label>
                                                             <div style={{
                                                                 width: '100%',
                                                                 aspectRatio: '1/1',
@@ -1282,8 +1941,9 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                 position: 'relative',
                                                                 boxShadow: '0 30px 60px rgba(0,0,0,0.5)'
                                                             }}>
+
                                                                 <img
-                                                                    src={activeImage || (selectedProduct.images && selectedProduct.images.length > 0 ? selectedProduct.images[0] : '')}
+                                                                    src={catalogViewerImage || (selectedProduct?.images && selectedProduct.images.length > 0 ? selectedProduct.images[0] : '')}
                                                                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                                                                 />
                                                             </div>
@@ -1299,7 +1959,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                         if (url && selectedProduct) {
                                                                             const newImages = [...selectedProduct.images, url];
                                                                             handleUpdateProduct({ images: newImages });
-                                                                            if (!activeImage) setActiveImage(url);
+                                                                            if (!catalogViewerImage) setCatalogViewerImage(url);
                                                                         }
                                                                     }}
                                                                     style={{ background: 'none', border: 'none', color: 'var(--accent-turquoise)', fontSize: '10px', fontWeight: '800', cursor: 'pointer', letterSpacing: '1px' }}
@@ -1318,30 +1978,30 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                 maxHeight: '400px',
                                                                 overflowY: 'auto'
                                                             }} className="custom-scroll">
-                                                                {selectedProduct.images && selectedProduct.images.map((img, i) => (
+                                                                {selectedProduct?.images && selectedProduct.images.map((img, i) => (
                                                                     <div
                                                                         key={i}
-                                                                        onClick={() => setActiveImage(img)}
+                                                                        onClick={() => setCatalogViewerImage(img)}
                                                                         style={{
                                                                             position: 'relative',
                                                                             aspectRatio: '1/1',
                                                                             borderRadius: '2px',
                                                                             overflow: 'hidden',
-                                                                            border: `2px solid ${activeImage === img ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.1)'}`,
+                                                                            border: `2px solid ${catalogViewerImage === img ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.1)'}`,
                                                                             cursor: 'pointer',
-                                                                            opacity: activeImage === img ? 1 : 0.6,
+                                                                            opacity: catalogViewerImage === img ? 1 : 0.6,
                                                                             transition: 'all 0.3s'
                                                                         }}
                                                                     >
                                                                         <img src={img} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
 
-                                                                        {activeImage === img && (
+                                                                        {catalogViewerImage === img && (
                                                                             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 212, 189, 0.1)', pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                                                                 <Star size={14} color="var(--accent-turquoise)" fill="var(--accent-turquoise)" />
                                                                             </div>
                                                                         )}
 
-                                                                        {/* BotÃ³n de eliminar miniatura */}
+                                                                        {/* Botín de eliminar miniatura */}
                                                                         <button
                                                                             onClick={(e) => handleRemoveImage(e, img)}
                                                                             style={{
@@ -1371,344 +2031,406 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
                                                     {/* Columna Derecha: Metadatos + Specs */}
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                                        {/* Fila 1: Mayorista, SKU y CategorÃ­a */}
-                                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end' }}>
-                                                            <div style={{ width: '200px' }}>
-                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>COÌDIGO / SKU</label>
+                                                        {/* Fila 1: Mayorista, SKU y Categoría */}
+                                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+                                                            <div style={{ width: '140px' }}>
+                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>MAYORISTA</label>
                                                                 <input
-                                                                    value={selectedProduct.external_id}
+                                                                    type="text"
+                                                                    value={selectedProduct?.wholesaler || ''}
+                                                                    onChange={(e) => handleUpdateProduct({ wholesaler: e.target.value })}
+                                                                    style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '15px', color: '#888', fontSize: '15px', outline: 'none' }}
+                                                                />
+                                                            </div>
+                                                            <div style={{ width: '140px' }}>
+                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>CÓDIGO / SKU</label>
+                                                                <input
+                                                                    value={selectedProduct?.external_id || ''}
                                                                     onChange={(e) => handleUpdateProduct({ external_id: e.target.value })}
                                                                     style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '15px', color: '#888', fontSize: '15px', outline: 'none' }}
                                                                 />
                                                             </div>
                                                             <div style={{ flex: 1 }}>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                                    <label style={{ fontSize: '11px', color: 'var(--accent-gold)', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase', margin: 0 }}>CATEGORÃA</label>
+                                                                    <label style={{ fontSize: "11px", color: "var(--accent-gold)", fontWeight: "800", letterSpacing: "3px", textTransform: "uppercase", margin: 0 }}>CATEGORÍA</label>
                                                                     <button
                                                                         onClick={() => setIsAddingCategory(!isAddingCategory)}
                                                                         style={{ background: 'none', border: 'none', color: 'var(--accent-turquoise)', fontSize: '10px', fontWeight: '700', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' }}
                                                                     >
-                                                                        {isAddingCategory ? 'â† VOLVER' : '+ NUEVA'}
+                                                                        {isAddingCategory ? "← VOLVER" : "+ NUEVA"}
                                                                     </button>
                                                                 </div>
                                                                 {isAddingCategory ? (
                                                                     <div style={{ display: 'flex', gap: '10px' }}>
                                                                         <input
                                                                             type="text"
-                                                                            placeholder="Nombre..."
+                                                                            placeholder="NUEVA CATEGORÍA"
                                                                             value={newCategoryName}
                                                                             onChange={(e) => setNewCategoryName(e.target.value)}
-                                                                            style={{ flex: 1, backgroundColor: 'rgba(0, 212, 189, 0.05)', border: '1px solid var(--accent-turquoise)', padding: '12px', color: 'white', fontSize: '14px', borderRadius: '4px', outline: 'none' }}
+                                                                            style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', padding: '15px', color: 'white', fontSize: '13px', outline: 'none' }}
                                                                         />
                                                                         <button
-                                                                            onClick={() => {
-                                                                                if (newCategoryName.trim()) {
-                                                                                    const formatted = newCategoryName.trim();
-                                                                                    if (!customCategories.includes(formatted)) {
-                                                                                        setCustomCategories([...customCategories, formatted]);
-                                                                                    }
-                                                                                    handleUpdateProduct({ category: formatted });
-                                                                                    setNewCategoryName('');
-                                                                                    setIsAddingCategory(false);
-                                                                                }
-                                                                            }}
-                                                                            style={{ backgroundColor: 'var(--accent-turquoise)', color: 'black', border: 'none', padding: '0 15px', borderRadius: '4px', fontWeight: '800', cursor: 'pointer', fontSize: '12px' }}
+                                                                            onClick={handleAddCategory}
+                                                                            style={{ backgroundColor: 'var(--accent-turquoise)', color: 'black', border: 'none', borderRadius: '2px', padding: '0 20px', fontWeight: '800', cursor: 'pointer', fontSize: '11px', textTransform: 'uppercase' }}
                                                                         >
-                                                                            OK
+                                                                            AÑADIR
                                                                         </button>
                                                                     </div>
                                                                 ) : (
-                                                                    <select
-                                                                        value={selectedProduct.category || ''}
-                                                                        onChange={(e) => handleUpdateProduct({ category: e.target.value })}
-                                                                        style={{ width: '100%', height: '54px', backgroundColor: 'rgba(0, 212, 189, 0.05)', border: '1px solid var(--accent-turquoise)', padding: '0 15px', color: 'white', borderRadius: '4px', outline: 'none', appearance: 'none', cursor: 'pointer', letterSpacing: '2px', textTransform: 'uppercase', fontSize: '12px', fontWeight: '700' }}
-                                                                    >
-                                                                        {customCategories.map(cat => <option key={cat} value={cat} style={{ background: '#0a0a0a' }}>{cat.toUpperCase()}</option>)}
-                                                                    </select>
+                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                        <div style={{ position: 'relative', marginBottom: '8px' }}>
+                                                                            <select
+                                                                                value={selectedProduct?.category || ''}
+                                                                                onChange={(e) => handleUpdateProduct({ category: e.target.value })}
+                                                                                style={{
+                                                                                    width: '100%',
+                                                                                    padding: '16px 15px',
+                                                                                    backgroundColor: 'rgba(255,255,255,0.02)',
+                                                                                    border: '1px solid rgba(255,255,255,0.05)',
+                                                                                    color: 'white',
+                                                                                    fontSize: '11px',
+                                                                                    fontWeight: '700',
+                                                                                    borderRadius: '4px',
+                                                                                    outline: 'none',
+                                                                                    textTransform: 'uppercase',
+                                                                                    cursor: 'pointer',
+                                                                                    appearance: 'none',
+                                                                                    height: '48px'
+                                                                                }}
+                                                                            >
+                                                                                <option value="" disabled>SELECCIONAR CATEGORÍA...</option>
+                                                                                {customCategories.map(cat => (
+                                                                                    <option key={cat} value={cat} style={{ color: 'black' }}>
+                                                                                        {cat}
+                                                                                    </option>
+                                                                                ))}
+                                                                            </select>
+                                                                            <div style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--accent-turquoise)' }}>
+                                                                                <ChevronRight size={14} style={{ transform: 'rotate(90deg)' }} />
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
                                                                 )}
                                                             </div>
-                                                            <div style={{ width: '120px' }}>
-                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>PREMIUM</label>
-                                                                <button
-                                                                    onClick={() => handleUpdateProduct({ is_premium: !selectedProduct.is_premium })}
-                                                                    style={{
-                                                                        width: '100%',
-                                                                        height: '54px',
-                                                                        backgroundColor: selectedProduct.is_premium ? 'rgba(0, 212, 189, 0.2)' : 'rgba(255,255,255,0.02)',
-                                                                        border: `1px solid ${selectedProduct.is_premium ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.05)'}`,
-                                                                        color: selectedProduct.is_premium ? 'var(--accent-turquoise)' : '#555',
-                                                                        borderRadius: '4px',
-                                                                        cursor: 'pointer',
-                                                                        fontSize: '10px',
-                                                                        fontWeight: '900',
-                                                                        transition: 'all 0.3s'
-                                                                    }}
-                                                                >
-                                                                    {selectedProduct.is_premium ? 'SÃ' : 'NO'}
-                                                                </button>
-                                                            </div>
                                                         </div>
 
-                                                        {/* SECCIÃ“N SEO & MARKETING (NUEVO) */}
-                                                        <div style={{ padding: '25px', background: 'rgba(212, 175, 55, 0.03)', borderRadius: '4px', border: '1px solid rgba(212, 175, 55, 0.1)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                <label style={{ fontSize: '11px', color: 'var(--accent-gold)', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>ESTRATEGIA SEO & MARKETING</label>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                    <span style={{ fontSize: '9px', color: '#555', fontWeight: '700' }}>Â¿ACTIVA EN MARKETING?</span>
-                                                                    <button
-                                                                        onClick={() => handleUpdateProduct({ for_marketing: !selectedProduct.for_marketing })}
-                                                                        style={{ padding: '4px 12px', borderRadius: '20px', border: '1px solid', borderColor: selectedProduct.for_marketing ? 'var(--accent-turquoise)' : '#333', backgroundColor: selectedProduct.for_marketing ? 'rgba(0,212,189,0.1)' : 'transparent', color: selectedProduct.for_marketing ? 'var(--accent-turquoise)' : '#555', fontSize: '10px', fontWeight: '800', cursor: 'pointer' }}
-                                                                    >
-                                                                        {selectedProduct.for_marketing ? 'SÃ, MARKETING READY' : 'NO'}
-                                                                    </button>
-                                                                </div>
-                                                            </div>
 
-                                                            <div style={{ display: 'flex', gap: '10px', padding: '12px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                                                <div style={{ flex: 1 }}>
-                                                                    <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '8px', fontWeight: '700', letterSpacing: '1px' }}>PROMOVER ESTA IMAGEN A PORTADA (HERO SLIDER)</label>
-                                                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                                                        {[1, 2, 3].map(num => (
-                                                                            <button
-                                                                                key={num}
-                                                                                onClick={() => handleSetAsHero(num)}
-                                                                                style={{ flex: 1, padding: '10px', background: 'rgba(212,175,55,0.05)', border: '1px solid rgba(212,175,55,0.2)', color: 'var(--accent-gold)', fontSize: '10px', fontWeight: '900', cursor: 'pointer', borderRadius: '4px', textTransform: 'uppercase', transition: 'all 0.3s' }}
-                                                                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(212,175,55,0.15)'}
-                                                                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(212,175,55,0.05)'}
-                                                                            >
-                                                                                SLIDE {num}
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                                                                <div>
-                                                                    <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>TÃTULO SEO (H1)</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={selectedProduct.seo_title}
-                                                                        onChange={(e) => handleUpdateProduct({ seo_title: e.target.value })}
-                                                                        style={{ width: '100%', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: 'white', borderRadius: '2px', fontSize: '13px', outline: 'none' }}
-                                                                    />
-                                                                </div>
-                                                                <div>
-                                                                    <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>KEYWORDS</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={selectedProduct.seo_keywords}
-                                                                        onChange={(e) => handleUpdateProduct({ seo_keywords: e.target.value })}
-                                                                        style={{ width: '100%', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: 'white', borderRadius: '2px', fontSize: '13px', outline: 'none' }}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                            <div>
-                                                                <label style={{ display: 'block', fontSize: '9px', color: 'rgba(255,255,255,0.4)', marginBottom: '5px', fontWeight: '700' }}>META DESCRIPCIÃ“N</label>
-                                                                <textarea
-                                                                    value={selectedProduct.seo_description}
-                                                                    onChange={(e) => handleUpdateProduct({ seo_description: e.target.value })}
-                                                                    style={{ width: '100%', height: '60px', backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', color: '#999', borderRadius: '2px', fontSize: '12px', resize: 'none', outline: 'none' }}
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Fila 2: TÃ­tulo ancho */}
-                                                        <div>
-                                                            <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>TÃTULO DEL PRODUCTO</label>
+                                                        {/* Título y Specs (Added) */}
+                                                        <div style={{ marginTop: "20px" }}>
+                                                            <label style={{ display: "block", fontSize: "11px", color: "var(--accent-gold)", marginBottom: "10px", fontWeight: "800", letterSpacing: "3px", textTransform: "uppercase" }}>NOMBRE DEL PRODUCTO</label>
                                                             <input
-                                                                value={selectedProduct.name}
+                                                                value={selectedProduct?.name || ''}
                                                                 onChange={(e) => handleUpdateProduct({ name: e.target.value })}
-                                                                style={{ width: '100%', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '18px', color: 'white', fontSize: '20px', fontWeight: '600', outline: 'none' }}
+                                                                style={{ width: "100%", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "2px", padding: "15px", color: "white", fontSize: "18px", fontWeight: "600", outline: "none" }}
                                                             />
                                                         </div>
 
-                                                        {/* Fila 3: Especificaciones anchas */}
-                                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', fontWeight: '800', letterSpacing: '2px', textTransform: 'uppercase', margin: 0 }}>ESPECIFICACIONES TÃ‰CNICAS (FICHA)</label>
-                                                            </div>
+                                                        <div style={{ flex: 1, display: "flex", flexDirection: "column", marginTop: "20px" }}>
+                                                            <label style={{ display: "block", fontSize: "11px", color: "var(--accent-gold)", marginBottom: "10px", fontWeight: "800", letterSpacing: "2px", textTransform: "uppercase" }}>CARACTERÍSTICA</label>
                                                             <textarea
-                                                                value={Array.isArray(selectedProduct.technical_specs) ? selectedProduct.technical_specs.join('\n') : (selectedProduct.technical_specs || '')}
-                                                                onChange={(e) => handleUpdateProduct({ technical_specs: e.target.value.split('\n').filter(l => l.trim()) })}
-                                                                style={{ width: '100%', flex: 1, minHeight: '400px', backgroundColor: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '2px', padding: '25px', color: '#eee', fontSize: '15px', outline: 'none', resize: 'none', lineHeight: '1.8', fontFamily: 'monospace' }}
+                                                                value={selectedProduct?.technical_specs?.join("\n") || ""}
+                                                                onChange={(e) => handleUpdateProduct({ technical_specs: e.target.value.split("\n").filter(l => l.trim()) })}
+                                                                style={{ width: "100%", flex: 1, minHeight: "300px", backgroundColor: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "2px", padding: "20px", color: "#ccc", fontSize: "14px", outline: "none", resize: "none", lineHeight: "1.6" }}
                                                             />
+                                                        </div>
+
+                                                        {/* Botones de AcciÍn (Added) */}
+                                                        <div style={{ marginTop: "30px", display: "flex", gap: "15px", paddingBottom: "30px" }}>
+                                                            <button
+                                                                onClick={handleSaveChanges}
+                                                                disabled={isSaving}
+                                                                style={{ flex: 1, backgroundColor: isSaving ? "#333" : "var(--accent-gold)", color: "black", border: "none", padding: "20px", fontSize: "14px", fontWeight: "900", letterSpacing: "2px", cursor: isSaving ? "not-allowed" : "pointer", borderRadius: "4px", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}
+                                                            >
+                                                                {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+                                                                GUARDAR
+                                                            </button>
+                                                            <button
+                                                                onClick={handlePublish}
+                                                                style={{ flex: 1, backgroundColor: "var(--accent-turquoise)", color: "black", border: "none", padding: "20px", fontSize: "14px", fontWeight: "900", letterSpacing: "2px", cursor: "pointer", borderRadius: "4px", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}
+                                                            >
+                                                                <Globe size={20} />
+                                                                PUBLICAR
+                                                            </button>
+                                                            <button
+                                                                onClick={handleReject}
+                                                                style={{ backgroundColor: "rgba(239, 68, 68, 0.1)", color: "#ef4444", border: "1px solid #ef4444", padding: "20px", borderRadius: "4px", cursor: "pointer" }}
+                                                            >
+                                                                <Trash2 size={20} />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                <div style={{ marginTop: '30px', display: 'flex', gap: '20px', paddingBottom: '40px' }}>
-                                                    <button
-                                                        onClick={handleReject}
-                                                        style={{ flex: 1, backgroundColor: 'rgba(239, 68, 68, 0.05)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '20px', fontSize: '14px', fontWeight: '800', letterSpacing: '2px', cursor: 'pointer', borderRadius: '4px', textTransform: 'uppercase', transition: 'all 0.3s' }}
-                                                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
-                                                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.05)'; }}
-                                                    >
-                                                        ELIMINAR BUFFER
-                                                    </button>
-
-                                                    <button
-                                                        onClick={handleSaveChanges}
-                                                        disabled={isSaving}
-                                                        style={{ flex: 1, backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'white', border: '1px solid rgba(255, 255, 255, 0.1)', padding: '20px', fontSize: '14px', fontWeight: '800', letterSpacing: '2px', cursor: isSaving ? 'not-allowed' : 'pointer', borderRadius: '4px', textTransform: 'uppercase', transition: 'all 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
-                                                    >
-                                                        {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                                                        GUARDAR CAMBIOS
-                                                    </button>
-
-                                                    <button
-                                                        onClick={handlePublish}
-                                                        style={{ flex: 2, backgroundColor: 'var(--accent-turquoise)', color: 'black', border: 'none', padding: '20px', fontSize: '16px', fontWeight: '900', letterSpacing: '4px', cursor: 'pointer', borderRadius: '4px', textTransform: 'uppercase', transition: 'all 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px' }}
-                                                        onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,212,189,0.3)'; }}
-                                                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
-                                                    >
-                                                        PUBLICAR PRODUCTO
-                                                    </button>
-                                                </div>
                                             </div>
                                         ) : (
-                                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#444', textTransform: 'uppercase', letterSpacing: '4px', fontSize: '13px' }}>
-                                                Selecciona un producto para comenzar la curación
+                                            <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.1 }}>
+                                                <Layers size={100} />
                                             </div>
                                         )}
                                     </div>
-                                </React.Fragment>
-                            ) : (
-                                <React.Fragment>
-                                    {/* Left List: Sections */}
-                                    <div className="custom-scroll" style={{ borderRight: '1px solid rgba(255,255,255,0.05)', overflowY: 'auto', padding: '32px 40px', backgroundColor: 'rgba(0,0,0,0.2)' }}>
-                                        <p style={{ fontSize: '11px', color: 'var(--accent-gold)', fontWeight: '800', textTransform: 'uppercase', marginBottom: '32px', letterSpacing: '3px', fontFamily: 'var(--font-body)' }}>
-                                            SECCIONES WEB
-                                        </p>
-                                        {[
-                                            { id: 'mugs', label: 'Tazas y Mugs' },
-                                            { id: 'botellas', label: 'Botellas y Termos' },
-                                            { id: 'libretas', label: 'Libretas y Agendas' },
-                                            { id: 'mochilas', label: 'Mochilas y Bolsos' },
-                                            { id: 'ecologicos', label: 'Línea de Madera' },
-                                            { id: 'bolsas', label: 'Bolsas Reutilizables' },
-                                            { id: 'hero', label: 'Banner Principal' }
-                                        ].map(sec => (
-                                            <motion.div
-                                                key={sec.id}
-                                                onClick={() => setSelectedGallerySection(sec.id)}
-                                                whileHover={{ scale: 1.02, x: 5 }}
-                                                style={{
-                                                    padding: '20px',
-                                                    backgroundColor: selectedGallerySection === sec.id ? 'rgba(0, 212, 189, 0.05)' : 'rgba(255, 255, 255, 0.01)',
-                                                    borderRadius: '4px',
-                                                    border: '1px solid',
-                                                    borderColor: selectedGallerySection === sec.id ? 'var(--accent-turquoise)' : 'rgba(255, 255, 255, 0.03)',
-                                                    cursor: 'pointer',
-                                                    marginBottom: '15px',
-                                                    transition: 'all 0.3s'
-                                                }}
-                                            >
-                                                <p style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: selectedGallerySection === sec.id ? 'var(--accent-turquoise)' : 'white', letterSpacing: '1px', textTransform: 'uppercase' }}>{sec.label}</p>
-                                            </motion.div>
-                                        ))}
-                                    </div>
-
-                                    {/* Right Detail: Gallery Grid */}
-                                    <div className="custom-scroll" style={{ padding: '40px 60px', overflowY: 'auto', backgroundColor: '#050505' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
-                                            <div>
-                                                <h2 style={{ color: 'white', fontFamily: 'var(--font-heading)', fontSize: '28px', margin: 0, letterSpacing: '2px', textTransform: 'uppercase' }}>
-                                                    GALERÍA DE <span style={{ color: 'var(--accent-gold)' }}>TRABAJOS REALIZADOS</span>
-                                                </h2>
-                                                <p style={{ color: '#666', fontSize: '14px', marginTop: '10px' }}>Gestiona las imágenes que se muestran en el carrusel de la sección.</p>
-                                            </div>
-
-                                            <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                                                <div style={{ display: 'flex', gap: '10px' }}>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Google Drive Folder ID"
-                                                        value={driveFolderId}
-                                                        onChange={(e) => setDriveFolderId(e.target.value)}
-                                                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '15px 20px', borderRadius: '4px', color: 'white', fontSize: '12px', width: '250px' }}
-                                                    />
+                                </React.Fragment >
+                            )
+                            }
+                            {
+                                activeTab === "gallery" && (
+                                    <React.Fragment>
+                                        <div className="custom-scroll" style={{ borderRight: "1px solid rgba(255,255,255,0.05)", overflowY: "auto", padding: "32px 40px", backgroundColor: "rgba(0,0,0,0.2)" }}>
+                                            <h3 style={{ color: "var(--accent-gold)", fontSize: "11px", fontWeight: "900", letterSpacing: "3px", textTransform: "uppercase", marginBottom: "30px" }}>SECCIONES</h3>
+                                            <div style={{ display: "grid", gap: "10px" }}>
+                                                {customCategories.map(sec => (
                                                     <button
-                                                        onClick={handleDriveSync}
-                                                        disabled={isSyncingDrive}
-                                                        style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '15px 20px', borderRadius: '4px', fontSize: '12px', fontWeight: '800', cursor: 'pointer' }}
+                                                        key={sec}
+                                                        onClick={() => setSelectedGallerySection(sec)}
+                                                        style={{ textAlign: "left", padding: "15px 20px", background: selectedGallerySection === sec ? "rgba(0, 212, 189, 0.05)" : "transparent", border: "1px solid", borderColor: selectedGallerySection === sec ? "var(--accent-turquoise)" : "transparent", color: selectedGallerySection === sec ? "var(--accent-turquoise)" : "#555", borderRadius: "4px", textTransform: "uppercase", fontSize: "11px", fontWeight: "800", cursor: "pointer", letterSpacing: "2px" }}
                                                     >
-                                                        {isSyncingDrive ? 'SYNCING...' : 'SYNC DRIVE'}
+                                                        {sec}
                                                     </button>
-                                                </div>
-
-                                                <input
-                                                    type="file"
-                                                    multiple
-                                                    accept="image/*"
-                                                    id="gallery-upload"
-                                                    style={{ display: 'none' }}
-                                                    onChange={handleGalleryUpload}
-                                                />
-                                                <label
-                                                    htmlFor="gallery-upload"
-                                                    style={{
-                                                        background: 'var(--accent-turquoise)',
-                                                        color: 'black',
-                                                        padding: '15px 30px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '12px',
-                                                        fontWeight: '900',
-                                                        cursor: uploadingGallery ? 'not-allowed' : 'pointer',
-                                                        letterSpacing: '2px',
-                                                        textTransform: 'uppercase',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '10px'
-                                                    }}
-                                                >
-                                                    {uploadingGallery ? <RefreshCw className="animate-spin" size={18} /> : <Plus size={18} />}
-                                                    {uploadingGallery ? 'SUBIENDO...' : 'SUBIR IMÁGENES'}
-                                                </label>
+                                                ))}
                                             </div>
                                         </div>
+                                        <div className="custom-scroll" style={{ padding: "60px", overflowY: "auto", backgroundColor: "#050505" }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "60px" }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                                    <h2 style={{ color: "white", fontFamily: "var(--font-heading)", fontSize: "32px", margin: 0, letterSpacing: "4px", textTransform: "uppercase" }}>
+                                                        GALERÍA: <span style={{ color: "var(--accent-gold)" }}>{selectedGallerySection.toUpperCase()}</span>
+                                                    </h2>
+                                                    <p style={{ fontSize: '10px', color: '#444', fontWeight: '800', letterSpacing: '1px' }}>
+                                                        SINCRO: {content.sections.some(s =>
+                                                            (s.id || '').toLowerCase().includes(selectedGallerySection.toLowerCase()) ||
+                                                            (s.title1 || (s as any).title || '').toLowerCase().includes(selectedGallerySection.toLowerCase())
+                                                        )
+                                                            ? 'CONECTADA A LANDING ✓'
+                                                            : 'SECCIÓN NO ENCONTRADA EN LANDING (VERIFICA NOMBRE)'}
+                                                    </p>
+                                                </div>
+                                                <div style={{ display: "flex", gap: "20px" }}>
+                                                    {/* BotÍn de subida eliminado por requerimiento */}
+                                                </div>
+                                            </div>
 
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '25px' }}>
-                                            {galleryImages.map((src, index) => (
-                                                <div key={index} style={{ position: 'relative', aspectRatio: '4/3', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)', background: '#111' }}>
-                                                    <img src={src} alt="Galería" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                    <button
-                                                        onClick={() => handleRemoveGalleryImage(index)}
+                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "25px" }}>
+                                                {galleryImages.map((src, index) => (
+                                                    <div key={index} style={{ position: "relative", aspectRatio: "4/3", borderRadius: "8px", overflow: "hidden", border: "1px solid rgba(255,255,255,0.05)", background: "#111" }}>
+                                                        <img src={src} alt="GalerÍa" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                                        <button
+                                                            onClick={() => handleRemoveGalleryImage(index)}
+                                                            style={{ position: "absolute", top: "10px", right: "10px", background: "rgba(239, 68, 68, 0.9)", color: "white", border: "none", borderRadius: "50%", width: "30px", height: "30px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 10px rgba(0,0,0,0.3)" }}
+                                                        >
+                                                            <X size={16} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                {galleryImages.length === 0 && !uploadingGallery && (
+                                                    <div
                                                         style={{
-                                                            position: 'absolute',
-                                                            top: '10px',
-                                                            right: '10px',
-                                                            background: 'rgba(239, 68, 68, 0.9)',
-                                                            color: 'white',
-                                                            border: 'none',
-                                                            borderRadius: '50%',
-                                                            width: '30px',
-                                                            height: '30px',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            cursor: 'pointer',
-                                                            boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
+                                                            gridColumn: "1 / -1", padding: "100px", textAlign: "center",
+                                                            border: "2px dashed rgba(255,255,255,0.05)", borderRadius: "12px",
+                                                            color: "#444"
                                                         }}
                                                     >
-                                                        <X size={16} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            {galleryImages.length === 0 && !uploadingGallery && (
-                                                <div style={{ gridColumn: '1 / -1', padding: '100px', textAlign: 'center', border: '2px dashed rgba(255,255,255,0.05)', borderRadius: '12px', color: '#444' }}>
-                                                    <Plus size={60} style={{ marginBottom: '20px', opacity: 0.2 }} />
-                                                    <p style={{ letterSpacing: '2px', textTransform: 'uppercase', fontSize: '12px' }}>No hay imágenes en esta galería</p>
-                                                </div>
-                                            )}
+                                                        <Plus size={60} style={{ marginBottom: "20px", opacity: 0.1 }} />
+                                                        <p style={{ letterSpacing: "2px", textTransform: "uppercase", fontSize: "12px" }}>No hay imágenes en esta galería</p>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                </React.Fragment>
-                            )}
-                        </div>
-                    </motion.div>
-                </motion.div>
-            )}
-        </AnimatePresence>
+                                    </React.Fragment>
+                                )
+                            }
+
+                            {
+                                activeTab === "hero" && (
+                                    <React.Fragment>
+                                        <div className="custom-scroll" style={{ padding: "60px", overflowY: "auto", backgroundColor: "#050505", gridColumn: "1 / -1" }}>
+                                            <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "40px" }}>
+                                                    <h2 style={{ color: "white", fontFamily: "var(--font-heading)", fontSize: "32px", margin: 0, letterSpacing: "4px", textTransform: "uppercase" }}>
+                                                        GESTIÍN DE <span style={{ color: "var(--accent-gold)" }}>BANNER PRINCIPAL (HERO)</span>
+                                                    </h2>
+                                                    {activeImage && (
+                                                        <div style={{ display: "flex", alignItems: "center", gap: "10px", background: "rgba(0,212,189,0.05)", padding: "10px 20px", borderRadius: "100px", border: "1px solid rgba(0,212,189,0.2)" }}>
+                                                            <span style={{ fontSize: "10px", color: "var(--accent-turquoise)", fontWeight: "900", letterSpacing: "1px" }}>IMAGEN CARGADA LISTA</span>
+                                                            <img src={activeImage} style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover", border: "1px solid var(--accent-turquoise)" }} />
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "40px" }}>
+                                                    {[0, 1, 2].map(idx => {
+                                                        const slideNum = idx + 1;
+                                                        const heroKey = idx === 0 ? 'background_image' : `background_image_${slideNum}`;
+                                                        const currentImg = (content.hero as any)[heroKey];
+
+                                                        return (
+                                                            <div key={idx} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", padding: "30px", display: "flex", flexDirection: "column", gap: "20px" }}>
+                                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                                    <span style={{ fontSize: "14px", fontWeight: "900", color: "var(--accent-gold)", letterSpacing: "2px" }}>SLIDE 0{slideNum}</span>
+                                                                    <button
+                                                                        onClick={() => handleSetAsHero(idx)}
+                                                                        disabled={isSaving || !activeImage}
+                                                                        style={{ padding: "10px 18px", background: activeImage ? "var(--accent-gold)" : "rgba(255,255,255,0.03)", color: activeImage ? "black" : "#444", border: "none", borderRadius: "2px", fontSize: "10px", fontWeight: "900", cursor: activeImage ? "pointer" : "not-allowed", textTransform: "uppercase", letterSpacing: "1px" }}
+                                                                    >
+                                                                        REEMPLAZAR
+                                                                    </button>
+                                                                </div>
+                                                                <div style={{ aspectRatio: "16/9", background: "#000", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.1)", overflow: "hidden", position: "relative" }}>
+                                                                    {currentImg ? (
+                                                                        <img src={currentImg} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt={`Slide ${slideNum}`} />
+                                                                    ) : (
+                                                                        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.1 }}>
+                                                                            <ImageIcon size={60} />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div style={{ padding: "10px", background: "rgba(0,0,0,0.3)", borderRadius: "4px" }}>
+                                                                    <p style={{ margin: 0, fontSize: "9px", color: "#666", fontWeight: "700", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                                        {currentImg || 'SIN IMAGEN'}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </React.Fragment>
+                                )
+                            }
+
+                            {
+                                activeTab === "marketing" && (
+                                    <React.Fragment>
+                                        <div className="custom-scroll" style={{ padding: "60px", overflowY: "auto", backgroundColor: "#050505", gridColumn: "1 / -1" }}>
+                                            <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "40px" }}>
+                                                    <h2 style={{ color: "white", fontFamily: "var(--font-heading)", fontSize: "32px", margin: 0, letterSpacing: "4px", textTransform: "uppercase" }}>
+                                                        AI CONTENT <span style={{ color: "var(--accent-gold)" }}>FACTORY</span>
+                                                    </h2>
+                                                    <div style={{ display: "flex", gap: "10px" }}>
+                                                        {(generatedMarketing || activeImage) && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setGeneratedMarketing(null);
+                                                                    setActiveImage(null);
+                                                                }}
+                                                                style={{ background: "rgba(255,255,255,0.1)", color: "#aaa", padding: "15px 20px", borderRadius: "4px", fontSize: "12px", fontWeight: "900", cursor: "pointer", textTransform: "uppercase", border: "1px solid rgba(255,255,255,0.2)" }}
+                                                            >
+                                                                LIMPIAR / CANCELAR
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={handleGenerateMarketingAI}
+                                                            disabled={isGeneratingAI || (!selectedProduct && !activeImage)}
+                                                            style={{ background: "var(--accent-turquoise)", color: "black", padding: "15px 30px", borderRadius: "4px", fontSize: "12px", fontWeight: "900", cursor: "pointer", textTransform: "uppercase" }}
+                                                        >
+                                                            {isGeneratingAI ? "GENERANDO..." : "GENERAR CON GEMINI"}
+                                                        </button>
+                                                        <button
+                                                            onClick={handleSaveMarketingAI}
+                                                            disabled={!generatedMarketing || isSaving}
+                                                            style={{ background: "var(--accent-gold)", color: "black", padding: "15px 30px", borderRadius: "4px", fontSize: "12px", fontWeight: "900", cursor: "pointer", textTransform: "uppercase" }}
+                                                        >
+                                                            {isSaving ? "GUARDANDO..." : "GUARDAR Y ENVIAR"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {generatedMarketing ? (
+                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px" }}>
+                                                        <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", padding: "30px", borderRadius: "8px" }}>
+                                                            <h3 style={{ color: "var(--accent-gold)", fontSize: "14px", marginBottom: "30px", letterSpacing: "2px", fontWeight: "800" }}>ESTRUCTURA DE MARKETING</h3>
+                                                            <div style={{ display: "flex", flexDirection: "column", gap: "25px" }}>
+                                                                <div>
+                                                                    <label style={{ color: "var(--accent-turquoise)", fontSize: "10px", fontWeight: "900", display: "block", marginBottom: "8px", letterSpacing: "1px" }}>ASUNTO DEL EMAIL</label>
+                                                                    <input value={generatedMarketing.subject} onChange={(e) => handleMarketingChange('subject', e.target.value)} style={{ width: "100%", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.1)", padding: "15px", color: "white", fontSize: "14px", borderRadius: "4px" }} />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{ color: "var(--accent-turquoise)", fontSize: "10px", fontWeight: "900", display: "block", marginBottom: "8px", letterSpacing: "1px" }}>TITULAR L1</label>
+                                                                    <input value={generatedMarketing.part1} onChange={(e) => handleMarketingChange('part1', e.target.value)} style={{ width: "100%", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.1)", padding: "15px", color: "white", fontSize: "14px", borderRadius: "4px" }} />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{ color: "var(--accent-turquoise)", fontSize: "10px", fontWeight: "900", display: "block", marginBottom: "8px", letterSpacing: "1px" }}>CUERPO DE TEXTO L2</label>
+                                                                    <textarea value={generatedMarketing.part2} onChange={(e) => handleMarketingChange('part2', e.target.value)} style={{ width: "100%", height: "150px", background: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.1)", padding: "15px", color: "#aaa", fontSize: "14px", borderRadius: "4px", resize: "none", lineHeight: "1.6" }} />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                                            {/* Panel de Imagen Activa - MOVIDO AQUÍ PARA VISIBILIDAD */}
+                                                            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", padding: "15px", borderRadius: "8px", display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                                <div>
+                                                                    <span style={{ fontSize: "10px", color: "var(--accent-gold)", fontWeight: "900", letterSpacing: "1px", display: "block", marginBottom: "5px" }}>
+                                                                        IMAGEN PARA CAMPAÑA
+                                                                    </span>
+                                                                    <span style={{ fontSize: "12px", color: "#888" }}>
+                                                                        {activeImage ? "Usando imagen de INSUMO" : (selectedProduct?.images?.[0] ? "Usando imagen de PRODUCTO" : "Sin imagen seleccionada")}
+                                                                    </span>
+                                                                </div>
+
+                                                                {(activeImage || selectedProduct?.images?.[0]) && (
+                                                                    <div style={{ position: 'relative', width: "60px", height: "60px", background: "black", borderRadius: "4px", overflow: "hidden", border: "1px solid #333" }}>
+                                                                        <img
+                                                                            src={activeImage || selectedProduct?.images?.[0]}
+                                                                            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                                                                        />
+                                                                        {activeImage && (
+                                                                            <button
+                                                                                onClick={() => setActiveImage(null)}
+                                                                                title="Descartar imagen de insumo y usar producto"
+                                                                                style={{ position: 'absolute', top: 0, right: 0, background: 'rgba(255,0,0,0.8)', color: 'white', border: 'none', width: '20px', height: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                                            >
+                                                                                <X size={12} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <div style={{ background: "white", padding: "0", borderRadius: "8px", overflow: "hidden", display: "flex", flexDirection: "column", height: "520px", border: "1px solid rgba(255,255,255,0.1)" }}>
+                                                                <div style={{ background: "#f0f0f0", padding: "10px 20px", borderBottom: "1px solid #ddd", color: "#666", fontSize: "10px", fontWeight: "800", letterSpacing: "1px" }}>PREVISUALIZACIÍN HTML</div>
+                                                                <div className="custom-scroll" style={{ flex: 1, overflowY: "auto", padding: "30px" }}>
+                                                                    <div dangerouslySetInnerHTML={{ __html: generatedMarketing.html.replace("IMAGE_URL_PLACEHOLDER", activeImage || selectedProduct?.images?.[0] || "") }} />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ height: "400px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: "2px dashed #222" }}>
+                                                        {activeImage ? (
+                                                            <>
+                                                                <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                                    <img src={activeImage} style={{ maxHeight: '200px', maxWidth: '300px', objectFit: 'contain', marginBottom: '20px', border: '1px solid #333' }} />
+                                                                    <button
+                                                                        onClick={() => setActiveImage(null)}
+                                                                        style={{ position: 'absolute', top: -10, right: -10, background: 'red', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                                    >
+                                                                        <X size={14} />
+                                                                    </button>
+                                                                </div>
+                                                                <p style={{ marginTop: "20px", letterSpacing: "2px", color: '#666', fontSize: '12px', fontWeight: 'bold' }}>IMAGEN LISTA PARA CAMPAÑA</p>
+                                                                {!selectedProduct && (
+                                                                    <p style={{ color: 'var(--accent-gold)', fontSize: '10px', marginTop: '10px', fontWeight: 'bold' }}>
+                                                                        ⚠️ PULSA "GENERAR" PARA CREAR TEXTO DESDE LA IMAGEN
+                                                                    </p>
+                                                                )}
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Sparkles size={60} style={{ opacity: 0.2 }} />
+                                                                <p style={{ marginTop: "20px", letterSpacing: "2px", opacity: 0.5 }}>SELECCIONA UN PRODUCTO Y PULSA "GENERAR"</p>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </React.Fragment>
+                                )
+                            }
+                        </div >
+                    </motion.div >
+                </motion.div >
+            )
+            }
+        </AnimatePresence >
     );
 }
