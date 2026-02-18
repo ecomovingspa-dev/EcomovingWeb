@@ -540,6 +540,80 @@ export default function SectionComposer({ isOpen, onClose, content, onSave, onCh
                                                                 <input type="checkbox" checked={block.writingMode === 'vertical-rl'} onChange={(e) => updateBlock(section.id, block.id, { writingMode: e.target.checked ? 'vertical-rl' : 'horizontal-tb' })} /> VERTICAL
                                                             </label>
                                                         </div>
+
+                                                        {/* TRANSFORMACIÓN EXPERTA */}
+                                                        <div style={{ gridColumn: 'span 2', borderTop: '1px solid #222', paddingTop: '15px', marginTop: '5px' }}>
+                                                            <label style={{ display: 'block', fontSize: '10px', color: '#00d4bd', fontWeight: 'bold', marginBottom: '10px', letterSpacing: '1px' }}>TRANSFORMACIÓN EXPERTA</label>
+
+                                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                                                                {/* Zoom */}
+                                                                <div>
+                                                                    <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', color: '#888', marginBottom: '5px' }}>
+                                                                        <span>ZOOM</span>
+                                                                        <span>{(block.transform_zoom || 1).toFixed(1)}x</span>
+                                                                    </label>
+                                                                    <input
+                                                                        type="range" min="1" max="3" step="0.1"
+                                                                        value={block.transform_zoom || 1}
+                                                                        onChange={(e) => updateBlock(section.id, block.id, { transform_zoom: parseFloat(e.target.value) })}
+                                                                        style={{ width: '100%', accentColor: '#00d4bd' }}
+                                                                    />
+                                                                </div>
+
+                                                                {/* Rotación */}
+                                                                <div>
+                                                                    <label style={{ display: 'block', fontSize: '9px', color: '#888', marginBottom: '5px' }}>ROTACIÓN</label>
+                                                                    <div style={{ display: 'flex', gap: '5px' }}>
+                                                                        {[0, 90, 180, 270].map(deg => (
+                                                                            <button
+                                                                                key={deg}
+                                                                                onClick={() => updateBlock(section.id, block.id, { transform_rotation: deg })}
+                                                                                style={{
+                                                                                    flex: 1, padding: '4px', fontSize: '10px',
+                                                                                    background: block.transform_rotation === deg ? '#00d4bd' : '#222',
+                                                                                    color: block.transform_rotation === deg ? '#000' : '#888',
+                                                                                    border: 'none', borderRadius: '4px', cursor: 'pointer'
+                                                                                }}
+                                                                            >
+                                                                                {deg}°
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Aspect Ratio */}
+                                                                <div>
+                                                                    <label style={{ display: 'block', fontSize: '9px', color: '#888', marginBottom: '5px' }}>ASPECT RATIO</label>
+                                                                    <select
+                                                                        value={block.transform_aspectRatio || 'auto'}
+                                                                        onChange={(e) => updateBlock(section.id, block.id, { transform_aspectRatio: e.target.value })}
+                                                                        style={{ width: '100%', background: '#000', border: '1px solid #222', color: 'white', fontSize: '11px', padding: '6px', borderRadius: '4px' }}
+                                                                    >
+                                                                        <option value="auto">Original (Auto)</option>
+                                                                        <option value="1/1">Cuadrado (1:1)</option>
+                                                                        <option value="4/5">Retrato (4:5)</option>
+                                                                        <option value="16/9">Landscape (16:9)</option>
+                                                                        <option value="9/16">Story (9:16)</option>
+                                                                    </select>
+                                                                </div>
+
+                                                                {/* Flip */}
+                                                                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                                                                    <button
+                                                                        onClick={() => updateBlock(section.id, block.id, { transform_flipX: !block.transform_flipX })}
+                                                                        style={{
+                                                                            width: '100%', padding: '6px', fontSize: '10px', fontWeight: 'bold',
+                                                                            background: block.transform_flipX ? '#00d4bd' : '#222',
+                                                                            color: block.transform_flipX ? '#000' : '#888',
+                                                                            border: '1px solid #333', borderRadius: '4px', cursor: 'pointer',
+                                                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                                                                        }}
+                                                                    >
+                                                                        <Move size={12} style={{ transform: 'scaleX(-1)' }} /> ESPEJAR (FLIP X)
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>

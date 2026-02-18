@@ -41,6 +41,12 @@ export interface LayoutBlock {
     writingMode?: 'horizontal-tb' | 'vertical-rl' | 'vertical-lr';
     fontSize?: string; // ej: "2rem"
     gallery?: string[]; // Para diapositivas dentro del bloque
+
+    // Transformación Experta
+    transform_zoom?: number;
+    transform_rotation?: number;
+    transform_flipX?: boolean;
+    transform_aspectRatio?: string;
 }
 
 export interface DynamicSection {

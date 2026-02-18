@@ -42,6 +42,13 @@ const BentoBlock = ({ block, designMode, assets, handleDrop }: {
     neon: `0 0 30px ${block.bgColor}88`
   };
 
+  // Transformaciones Expertas
+  // Aseguramos que estos valores se lean directamente de las props 'block' en cada render
+  const zoom = block.transform_zoom || 1;
+  const rotation = block.transform_rotation || 0;
+  const flipX = block.transform_flipX ? -1 : 1;
+  const aspectRatio = block.transform_aspectRatio || (block.isCircle ? '1/1' : 'auto');
+
   useEffect(() => {
     if (images.length > 1) {
       const interval = setInterval(() => {
@@ -54,9 +61,8 @@ const BentoBlock = ({ block, designMode, assets, handleDrop }: {
   return (
     <motion.div
       layoutId={block.id}
-      initial={{ opacity: 0, scale: 0.9 }}
-      whileInView={{ opacity: 1, scale: 1 }}
-      viewport={{ once: true }}
+      // Eliminamos initial/whileInView para evitar conflictos con actualizaciones en tiempo real durante la edicion
+      // O los mantenemos pero aseguramos que el estilo inline tenga prioridad
       style={{
         gridColumn: `${block.col} / span ${spanW}`,
         gridRow: `${block.row} / span ${spanH}`,
@@ -66,7 +72,7 @@ const BentoBlock = ({ block, designMode, assets, handleDrop }: {
           ? `linear-gradient(135deg, ${block.bgColor}, ${block.bgColor}dd)`
           : (block.bgColor || '#111'),
         borderRadius: block.isCircle ? '50%' : (block.borderRadius || '32px'),
-        aspectRatio: block.isCircle ? '1/1' : 'auto',
+        aspectRatio: aspectRatio,
         boxShadow: shadowStyles[block.shadow as keyof typeof shadowStyles] || shadowStyles.none,
         backdropFilter: block.blur ? `blur(${block.blur})` : 'none',
         overflow: 'hidden',
@@ -74,7 +80,8 @@ const BentoBlock = ({ block, designMode, assets, handleDrop }: {
         justifyContent: 'center', alignItems: 'center',
         padding: isText ? '40px' : '0',
         border: designMode ? '2px solid #00d4bd' : (block.borderColor ? `1px solid ${block.borderColor}` : 'none'),
-        cursor: block.link ? 'pointer' : 'default'
+        cursor: block.link ? 'pointer' : 'default',
+        transition: 'all 0.3s ease' // Transición suave para cambios de contenedor
       }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => handleDrop(e, block.id)}
@@ -86,19 +93,29 @@ const BentoBlock = ({ block, designMode, assets, handleDrop }: {
       )}
 
       {isImage && (
-        <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
           <AnimatePresence mode="wait">
             <motion.img
               key={`${block.id}-${currentIdx}`}
               initial={{ opacity: 0, scale: 1.1 }}
-              animate={{ opacity: 1, scale: 1 }}
+              // CONECTAMOS LOS CONTROLES DIRECTAMENTE AL MOTOR DE ANIMACIÓN
+              animate={{
+                opacity: 1,
+                scale: zoom,          // El Zoom ahora es controlado por Framer
+                rotate: rotation,     // La Rotación ahora es controlada por Framer
+                scaleX: flipX         // El Espejado ahora es controlado por Framer
+              }}
               exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 1.2, ease: "easeInOut" }}
+              transition={{
+                duration: 0.5,        // Transición más rápida para respuesta inmediata en el editor
+                ease: "easeOut"
+              }}
               src={assets[block.id] || images[currentIdx] || 'https://via.placeholder.com/800x600?text=Ecomoving'}
               style={{
                 width: '100%', height: '100%', objectFit: 'cover',
                 opacity: block.type === 'both' ? 0.4 : 1,
-                zIndex: 1
+                zIndex: 1,
+                // Eliminamos transform manual para evitar conflictos
               }}
               alt={block.label}
             />
