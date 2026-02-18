@@ -117,7 +117,20 @@ const BentoBlock = ({ block, designMode, assets, handleDrop }: {
           transform: block.writingMode && block.writingMode !== 'horizontal-tb' ? 'rotate(180deg)' : 'none',
           padding: '20px'
         }}>
-          {block.textContent}
+          {block.textContent && <h3 style={{ margin: 0, lineHeight: 1.2, textTransform: 'uppercase' }}>{block.textContent}</h3>}
+          {block.subText && (
+            <p style={{
+              margin: '15px 0 0 0',
+              fontWeight: 400,
+              fontSize: '0.9rem',
+              opacity: 0.9,
+              fontFamily: 'var(--font-body)',
+              textShadow: 'none',
+              lineHeight: 1.6
+            }}>
+              {block.subText}
+            </p>
+          )}
         </div>
       )}
     </motion.div>
@@ -281,30 +294,6 @@ export default function Home() {
                 }}>
                   {section.paragraph1}
                 </p>
-
-                {section.title2 && (
-                  <h3 style={{
-                    fontSize: '1.5rem',
-                    color: section.titleColor || 'white',
-                    marginTop: '20px',
-                    marginBottom: '10px',
-                    opacity: 0.9,
-                    fontFamily: 'var(--font-heading)'
-                  }}>
-                    {section.title2}
-                  </h3>
-                )}
-
-                {section.paragraph2 && (
-                  <p style={{
-                    fontSize: '1.1rem',
-                    color: section.descColor || '#666',
-                    lineHeight: 1.6,
-                    textAlign: section.descAlign || 'left'
-                  }}>
-                    {section.paragraph2}
-                  </p>
-                )}
               </div>
             </div>
           </motion.div>
@@ -330,15 +319,33 @@ export default function Home() {
               );
             })}
 
-            {(section.blocks || []).map((block: any) => (
-              <BentoBlock
-                key={block.id}
-                block={block}
-                designMode={designMode}
-                assets={assets}
-                handleDrop={handleDrop}
-              />
-            ))}
+            {(() => {
+              // Filtrar y ordenar bloques de texto para inyección automática de contenido SEO
+              const textBlocks = (section.blocks || [])
+                .filter((b: any) => b.type === 'text')
+                .sort((a: any, b: any) => (a.row - b.row) || (a.col - b.col));
+
+              return (section.blocks || []).map((block: any) => {
+                let injectedContent = block.textContent;
+                let injectedSubText = block.subText;
+
+                // Inyectar Título 2 y Descripción 2 en el PRIMER bloque de texto encontrado
+                if (textBlocks[0]?.id === block.id) {
+                  if (section.title2) injectedContent = section.title2;
+                  if (section.paragraph2) injectedSubText = section.paragraph2;
+                }
+
+                return (
+                  <BentoBlock
+                    key={block.id}
+                    block={{ ...block, textContent: injectedContent, subText: injectedSubText }}
+                    designMode={designMode}
+                    assets={assets}
+                    handleDrop={handleDrop}
+                  />
+                );
+              });
+            })()}
           </div>
 
           <VisualGallery
