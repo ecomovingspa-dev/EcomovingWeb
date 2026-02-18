@@ -265,38 +265,47 @@ export default function Home() {
             </h2>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: '12px', marginTop: '40px' }}>
-              <p style={{
+              <div style={{
                 gridColumn: `${section.descCol || 1} / span ${section.descSpan || 12}`,
-                color: section.descColor || '#888',
-                fontSize: section.descSize || '1.2rem',
-                textAlign: section.descAlign || 'left',
-                lineHeight: 1.8,
-                transition: 'all 0.5s ease'
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px'
               }}>
-                {section.paragraph1}
-              </p>
-
-              {section.title2 && (
-                <h3 style={{
-                  fontSize: '1.5rem',
-                  color: section.titleColor || 'white',
-                  marginTop: '40px',
-                  marginBottom: '15px',
-                  opacity: 0.9
-                }}>
-                  {section.title2}
-                </h3>
-              )}
-              {section.paragraph2 && (
                 <p style={{
-                  maxWidth: '700px',
-                  fontSize: '1.1rem',
-                  color: section.descColor || '#666',
-                  lineHeight: 1.6
+                  color: section.descColor || '#888',
+                  fontSize: section.descSize || '1.2rem',
+                  textAlign: section.descAlign || 'left',
+                  lineHeight: 1.8,
+                  transition: 'all 0.5s ease',
+                  marginTop: 0
                 }}>
-                  {section.paragraph2}
+                  {section.paragraph1}
                 </p>
-              )}
+
+                {section.title2 && (
+                  <h3 style={{
+                    fontSize: '1.5rem',
+                    color: section.titleColor || 'white',
+                    marginTop: '20px',
+                    marginBottom: '10px',
+                    opacity: 0.9,
+                    fontFamily: 'var(--font-heading)'
+                  }}>
+                    {section.title2}
+                  </h3>
+                )}
+
+                {section.paragraph2 && (
+                  <p style={{
+                    fontSize: '1.1rem',
+                    color: section.descColor || '#666',
+                    lineHeight: 1.6,
+                    textAlign: section.descAlign || 'left'
+                  }}>
+                    {section.paragraph2}
+                  </p>
+                )}
+              </div>
             </div>
           </motion.div>
 

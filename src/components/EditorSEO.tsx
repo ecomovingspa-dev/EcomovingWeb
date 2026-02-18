@@ -100,11 +100,8 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
             // Mapeamos los datos de la DB y rellenamos con secciones que falten
             const dbSections = data || [];
 
-            // Combinamos las llaves de SECTION_LABELS con las que realmente existen en el DB
-            const allSectionKeys = Array.from(new Set([
-                ...Object.keys(SECTION_LABELS),
-                ...dbSections.map((s: any) => s.section)
-            ]));
+            // Usamos solo las secciones definidas en SECTION_LABELS para evitar mostrar contenido obsoleto
+            const allSectionKeys = Object.keys(SECTION_LABELS);
 
             const completeContent: WebContent[] = allSectionKeys.map(sectionKey => {
                 const existing = dbSections.find((s: any) => s.section === sectionKey);
@@ -412,7 +409,12 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
                         gap: '6px'
                     }}>
                         {key.toLowerCase().includes('title') ? <Type size={12} /> : (key.toLowerCase().includes('desc') || key.toLowerCase().includes('para') || key.toLowerCase().includes('textcontent') ? <FileText size={12} /> : <LinkIcon size={12} />)}
-                        {FIELD_LABELS[key] || (key.includes(':') ? key.split(':').pop()?.replace(/_/g, ' ').toUpperCase() : key.replace(/_/g, ' ').toUpperCase())}
+                        {(() => {
+                            // Extraer el nombre del campo real si es una clave compuesta (block:id:root:field)
+                            const realFieldName = key.includes(':') ? key.split(':').pop() || key : key;
+                            // Buscar en el mapa de etiquetas o formatear
+                            return FIELD_LABELS[realFieldName] || realFieldName.replace(/_/g, ' ').toUpperCase();
+                        })()}
                     </label>
                     {!isEditing && (
                         <div style={{ display: 'flex', gap: '8px' }}>
