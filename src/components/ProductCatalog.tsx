@@ -917,8 +917,8 @@ export default function ProductCatalog({
                     overflow: hidden;
                 }
                 .modal-hero-image {
-                    max-width: 100%;
-                    max-height: 100%;
+                    max-width: 50%;
+                    max-height: 50%;
                     object-fit: contain;
                     filter: drop-shadow(0 40px 100px rgba(0,0,0,0.9));
                 }

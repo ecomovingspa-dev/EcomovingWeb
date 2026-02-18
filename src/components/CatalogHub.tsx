@@ -731,6 +731,8 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         }
     };
 
+
+
     const handleRouteInsumo = async (destination: 'catalog' | 'hero' | 'gallery' | 'marketing') => {
         if (!insumoMetadata?.optimizedUrl || !insumoMetadata.optimizedBlob) return;
 
@@ -958,7 +960,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 ? `Producto: ${selectedProduct.name}\nDescripción: ${selectedProduct.seo_description || selectedProduct.original_description}\nSpecs: ${selectedProduct.technical_specs?.join(', ')}`
                 : "Analiza la imagen y deduce el producto, creando un copy de marketing atractivo.";
 
-            const imageToUse = activeImage || (selectedProduct?.images?.[0] || null);
+            const imageToUse = activeImage || catalogViewerImage || (selectedProduct?.images?.[0] || null);
 
             if (!imageToUse) throw new Error("No hay imagen disponible para generar contenido");
 
@@ -2322,6 +2324,85 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                         );
                                                     })}
                                                 </div>
+                                            </div>
+                                        </div>
+                                    </React.Fragment>
+                                )
+                            }
+
+                            {
+                                activeTab === "marketing" && (
+                                    <React.Fragment>
+                                        <div className="custom-scroll" style={{ padding: "60px", overflowY: "auto", backgroundColor: "#050505", gridColumn: "1 / -1", height: '100%' }}>
+                                            <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "40px" }}>
+                                                    <h2 style={{ color: "white", fontFamily: "var(--font-heading)", fontSize: "32px", margin: 0, letterSpacing: "4px", textTransform: "uppercase" }}>
+                                                        AI CONTENT <span style={{ color: "var(--accent-gold)" }}>FACTORY</span>
+                                                    </h2>
+                                                    <div style={{ display: "flex", gap: "15px" }}>
+                                                        <button
+                                                            onClick={handleGenerateMarketingAI}
+                                                            disabled={isGeneratingAI || !selectedProduct}
+                                                            style={{ background: "var(--accent-turquoise)", color: "black", padding: "15px 30px", borderRadius: "4px", fontSize: "12px", fontWeight: "900", cursor: "pointer", textTransform: "uppercase", display: 'flex', alignItems: 'center', gap: '8px' }}
+                                                        >
+                                                            {isGeneratingAI ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                                                            {isGeneratingAI ? "GENERANDO..." : "GENERAR MARKETING (GEMINI)"}
+                                                        </button>
+                                                        <button
+                                                            onClick={handleSaveMarketingAI}
+                                                            disabled={!generatedMarketing || isSaving}
+                                                            style={{ background: "var(--accent-gold)", color: "black", padding: "15px 30px", borderRadius: "4px", fontSize: "12px", fontWeight: "900", cursor: "pointer", textTransform: "uppercase" }}
+                                                        >
+                                                            {isSaving ? "GUARDANDO..." : "GUARDAR Y ENVIAR"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {generatedMarketing ? (
+                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px" }}>
+                                                        <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", padding: "30px", borderRadius: "8px" }}>
+                                                            <h3 style={{ color: "var(--accent-gold)", fontSize: "14px", marginBottom: "20px" }}>ESTRUCTURA DE DATOS</h3>
+                                                            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                                                                <div>
+                                                                    <label style={{ color: "#555", fontSize: "10px", display: "block", marginBottom: "5px" }}>ASUNTO</label>
+                                                                    <input
+                                                                        value={generatedMarketing.subject}
+                                                                        onChange={(e) => handleMarketingChange('subject', e.target.value)}
+                                                                        style={{ width: "100%", background: "#000", border: "1px solid #333", padding: "12px", color: "white", borderRadius: "4px" }}
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{ color: "#555", fontSize: "10px", display: "block", marginBottom: "5px" }}>TITULAR L1</label>
+                                                                    <input
+                                                                        value={generatedMarketing.part1}
+                                                                        onChange={(e) => handleMarketingChange('part1', e.target.value)}
+                                                                        style={{ width: "100%", background: "#000", border: "1px solid #333", padding: "12px", color: "white", borderRadius: "4px" }}
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label style={{ color: "#555", fontSize: "10px", display: "block", marginBottom: "5px" }}>DESCRIPCIÓN L2</label>
+                                                                    <textarea
+                                                                        value={generatedMarketing.part2}
+                                                                        onChange={(e) => handleMarketingChange('part2', e.target.value)}
+                                                                        style={{ width: "100%", height: "100px", background: "#000", border: "1px solid #333", padding: "12px", color: "#888", borderRadius: "4px" }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ background: "#fff", padding: "40px", borderRadius: "8px", overflowY: "auto", maxHeight: "600px", border: '1px solid #333' }}>
+                                                            <iframe
+                                                                srcDoc={generatedMarketing.html}
+                                                                style={{ width: "100%", height: "100%", minHeight: "600px", border: "none" }}
+                                                                title="Marketing Preview"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ height: "400px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", opacity: 0.2, border: "2px dashed #444", borderRadius: "12px" }}>
+                                                        <Sparkles size={60} />
+                                                        <p style={{ marginTop: "20px", letterSpacing: "2px", color: "#666" }}>SELECCIONA UN PRODUCTO Y PULSA "GENERAR"</p>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </React.Fragment>
