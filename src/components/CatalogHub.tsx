@@ -1349,6 +1349,17 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                             <div style={{ position: "absolute", bottom: "10px", right: "10px", background: "rgba(0,0,0,0.5)", padding: "4px 10px", borderRadius: "100px", fontSize: "10px", color: "var(--accent-turquoise)", fontWeight: "800", pointerEvents: "none" }}>
                                                                 PO: {insumoTransform.offsetX.toFixed(0)}x | {insumoTransform.offsetY.toFixed(0)}y
                                                             </div>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setInsumoMetadata(null);
+                                                                    setInsumoFile(null);
+                                                                }}
+                                                                title="Eliminar imagen actual"
+                                                                style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(239, 68, 68, 0.9)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', zIndex: 20 }}
+                                                            >
+                                                                <X size={14} />
+                                                            </button>
                                                         </React.Fragment>
                                                     ) : (
                                                         <>
