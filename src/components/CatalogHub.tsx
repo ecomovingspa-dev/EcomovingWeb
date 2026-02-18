@@ -1686,7 +1686,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                             </div>
 
                                                             {newProductForm.images && newProductForm.images.length > 0 && (
-                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', maxHeight: '300px', overflowY: 'auto', padding: '10px', background: 'rgba(255,255,255,0.01)', borderRadius: '2px', border: '1px solid rgba(255,255,255,0.03)' }} className="custom-scroll">
+                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(20, 1fr)', gap: '6px', maxHeight: '300px', overflowY: 'auto', padding: '10px', background: 'rgba(255,255,255,0.01)', borderRadius: '2px', border: '1px solid rgba(255,255,255,0.03)' }} className="custom-scroll">
                                                                     {newProductForm.images.map((img, i) => (
                                                                         <div
                                                                             key={i}
@@ -1767,7 +1767,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                 />
                                                             </div>
                                                             <div style={{ flex: 1 }}>
-                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>CATEGORÍAS (USA COMA PARA VARIA)</label>
+                                                                <label style={{ display: 'block', fontSize: '11px', color: 'var(--accent-gold)', marginBottom: '10px', fontWeight: '800', letterSpacing: '3px', textTransform: 'uppercase' }}>CATEGORÍAS (SEPARA CON COMA PARA DOBLE CAT)</label>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                                     {/* Lista de Categorías Predefinidas */}
                                                                     <div style={{ position: 'relative', marginBottom: '8px' }}>
@@ -1969,7 +1969,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                             </div>
                                                             <div style={{
                                                                 display: 'grid',
-                                                                gridTemplateColumns: 'repeat(6, 1fr)',
+                                                                gridTemplateColumns: 'repeat(20, 1fr)',
                                                                 gap: '8px',
                                                                 padding: '15px',
                                                                 background: 'rgba(255,255,255,0.02)',
@@ -2052,7 +2052,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                             </div>
                                                             <div style={{ flex: 1 }}>
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                                    <label style={{ fontSize: "11px", color: "var(--accent-gold)", fontWeight: "800", letterSpacing: "3px", textTransform: "uppercase", margin: 0 }}>CATEGORÍA</label>
+                                                                    <label style={{ fontSize: "11px", color: "var(--accent-gold)", fontWeight: "800", letterSpacing: "3px", textTransform: "uppercase", margin: 0 }}>CATEGORÍAS (COMA PARA DOBLE CAT)</label>
                                                                     <button
                                                                         onClick={() => setIsAddingCategory(!isAddingCategory)}
                                                                         style={{ background: 'none', border: 'none', color: 'var(--accent-turquoise)', fontSize: '10px', fontWeight: '700', cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase' }}
@@ -2064,10 +2064,21 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                     <div style={{ display: 'flex', gap: '10px' }}>
                                                                         <input
                                                                             type="text"
-                                                                            placeholder="NUEVA CATEGORÍA"
-                                                                            value={newCategoryName}
-                                                                            onChange={(e) => setNewCategoryName(e.target.value)}
-                                                                            style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', padding: '15px', color: 'white', fontSize: '13px', outline: 'none' }}
+                                                                            placeholder="EJ: ECOLOGICOS, BOTELLAS..."
+                                                                            value={selectedProduct?.category || ''}
+                                                                            onChange={(e) => handleUpdateProduct({ category: e.target.value })}
+                                                                            style={{
+                                                                                width: '100%',
+                                                                                padding: '16px 15px',
+                                                                                backgroundColor: 'rgba(255,255,255,0.05)',
+                                                                                border: '1px solid var(--accent-turquoise)',
+                                                                                color: 'white',
+                                                                                fontSize: '11px',
+                                                                                fontWeight: '700',
+                                                                                borderRadius: '4px',
+                                                                                outline: 'none',
+                                                                                textTransform: 'uppercase'
+                                                                            }}
                                                                         />
                                                                         <button
                                                                             onClick={handleAddCategory}
