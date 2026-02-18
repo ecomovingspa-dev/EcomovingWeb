@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers, Rocket, Send } from 'lucide-react';
+import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers, Rocket, Send, CloudUpload } from 'lucide-react';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
 import { useWebContent, SectionContent, GridCell, DynamicSection, WebContent } from '@/hooks/useWebContent';
 import EditorSEO from '@/components/EditorSEO';
@@ -143,6 +143,25 @@ export default function Home() {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [designMode, setDesignMode] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+
+  const handleDeploy = async () => {
+    if (!confirm('¿Estás seguro de enviar los cambios a GitHub? Esto actualizará el sitio web público.')) return;
+    setIsDeploying(true);
+    try {
+      const res = await fetch('/api/git-sync', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        alert('¡ÉXITO! ' + data.message);
+      } else {
+        alert('ERROR: ' + data.error);
+      }
+    } catch (err) {
+      alert('Error de conexión con el servidor de despliegue.');
+    } finally {
+      setIsDeploying(false);
+    }
+  };
 
   const handleComposerChange = useCallback((newSections: DynamicSection[]) => {
     setPreviewContent(prev => ({ ...(prev || content), sections: newSections }));
@@ -345,6 +364,17 @@ export default function Home() {
         </div>
         <div className='nav-actions' style={{ display: 'flex', gap: '10px' }}>
           <button onClick={() => setSelectedProject(null)} className='nav-btn' style={{ background: 'rgba(255,100,100,0.1)', color: '#ff6b6b' }}><Rocket size={16} /> SALIR</button>
+
+          <button
+            onClick={handleDeploy}
+            className='nav-btn'
+            style={{ background: isDeploying ? 'rgba(0, 212, 189, 0.2)' : 'rgba(255,255,255,0.05)', color: isDeploying ? '#00d4bd' : '#aaa', borderColor: isDeploying ? '#00d4bd' : 'rgba(255,255,255,0.1)' }}
+            disabled={isDeploying}
+          >
+            <CloudUpload size={16} className={isDeploying ? 'animate-bounce' : ''} />
+            {isDeploying ? 'ENVIANDO...' : 'PUBLISH'}
+          </button>
+
           <button onClick={() => setIsCatalogHubOpen(true)} className='nav-btn'><Layout size={16} /> HUB</button>
           <button onClick={() => setIsBibliotecaOpen(true)} className='nav-btn'><ImageIcon size={16} /> IA</button>
           <button onClick={() => setIsComposerOpen(true)} className='nav-btn'><Layers size={16} /> COMPOSER</button>
