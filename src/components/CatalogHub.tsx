@@ -820,11 +820,16 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 setIsSaving(false);
             }
         } else if (destination === 'gallery') {
+            const targetSection = prompt('¿A qué galería deseas enviar esta imagen?\n\nOpciones sugeridas: mugs, botellas, mochilas, libretas, ecologicos, bolsas');
+
+            if (!targetSection) return;
+            const normalizedSection = targetSection.toLowerCase().trim();
+
             setIsSaving(true);
             try {
                 const fileName = insumoAISEOFilename
                     ? `${insumoAISEOFilename}.webp`
-                    : `IN-GAL-${selectedGallerySection.toUpperCase()}-${Date.now()}.webp`;
+                    : `IN-GAL-${normalizedSection.toUpperCase()}-${Date.now()}.webp`;
 
                 const { error: uploadError } = await supabase.storage
                     .from('imagenes-marketing')
@@ -836,13 +841,15 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                     .from('imagenes-marketing')
                     .getPublicUrl(`galerias/${fileName}`);
 
-                const newGallery = [...galleryImages, publicUrl];
-
+                // Fetch data for the chosen section
                 const { data: currentData } = await supabase
                     .from('web_contenido')
                     .select('content')
-                    .eq('section', selectedGallerySection)
-                    .single();
+                    .eq('section', normalizedSection)
+                    .maybeSingle();
+
+                const currentGallery = currentData?.content?.gallery || [];
+                const newGallery = [...currentGallery, publicUrl];
 
                 const updatedContent = {
                     ...(currentData?.content || {}),
@@ -852,17 +859,19 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 await supabase
                     .from('web_contenido')
                     .upsert({
-                        section: selectedGallerySection,
+                        section: normalizedSection,
                         content: updatedContent,
                         updated_by: 'CatalogHub-Insumo'
                     }, { onConflict: 'section' });
 
+                // Actualizar estado local para reflejar cambios
+                setSelectedGallerySection(normalizedSection);
                 setGalleryImages(newGallery);
                 setActiveTab('gallery');
-                alert(`íImagen guardada en ${selectedGallerySection.toUpperCase()}!`);
+                alert(`¡Imagen guardada en galería de ${normalizedSection.toUpperCase()}!`);
             } catch (err) {
                 console.error(err);
-                alert('Error al enviar a galería');
+                alert('Error al enviar a galería: ' + (err as any).message);
             } finally {
                 setIsSaving(false);
             }
