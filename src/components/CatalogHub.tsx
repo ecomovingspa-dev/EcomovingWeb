@@ -106,6 +106,16 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     const [marketingLibraryImages, setMarketingLibraryImages] = useState<string[]>([]);
     const [marketingLibraryLoading, setMarketingLibraryLoading] = useState(false);
 
+    // Contexto Hero Text Edit
+    const [heroForm, setHeroForm] = useState({
+        title1: '',
+        paragraph1: '',
+        cta_text: 'EXPLORAR CATÁLOGO',
+        cta_link: '/catalogo',
+        text_align_h: 'center',
+        text_align_v: 'center'
+    });
+
     // AI CONTENT FACTORY STATE
     const [isGeneratingAI, setIsGeneratingAI] = useState(false);
     const [generatedMarketing, setGeneratedMarketing] = useState<MarketingContent | null>(null);
@@ -591,8 +601,18 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     useEffect(() => {
         if (isOpen && activeTab === 'hero') {
             fetchMarketingStorage();
+            if (content && content.hero) {
+                setHeroForm({
+                    title1: content.hero.title1 || '',
+                    paragraph1: content.hero.paragraph1 || '',
+                    cta_text: content.hero.cta_text || 'EXPLORAR CATÁLOGO',
+                    cta_link: content.hero.cta_link || '/catalogo',
+                    text_align_h: content.hero.text_align_h || 'center',
+                    text_align_v: content.hero.text_align_v || 'center'
+                });
+            }
         }
-    }, [isOpen, activeTab]);
+    }, [isOpen, activeTab, content]);
 
     // Funciones para Gestión de GRILLA
     const fetchGallery = async (section: string) => {
@@ -1125,6 +1145,66 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
             alert('Error al actualizar el Hero');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleSaveHeroTexts = async () => {
+        setIsSaving(true);
+        try {
+            const success = await updateSection('hero', {
+                ...content.hero,
+                title1: heroForm.title1,
+                paragraph1: heroForm.paragraph1,
+                cta_text: heroForm.cta_text,
+                cta_link: heroForm.cta_link,
+                text_align_h: heroForm.text_align_h,
+                text_align_v: heroForm.text_align_v
+            });
+            if (success) {
+                alert('¡Textos y layout del Hero guardados con éxito!');
+            } else {
+                throw new Error('Fallo al actualizar el texto');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Error al guardar configuración del Hero');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleGenerateHeroAI = async () => {
+        setIsGeneratingAI(true);
+        setAiStatus('⚡ Conectando con IA @seo_mkt...');
+        try {
+            const productContext = selectedProduct ? selectedProduct.nombre : 'Merchandising Sustentable Premium';
+            const descContext = selectedProduct ? selectedProduct.descripcion : 'Soluciones ecológicas corporativas para fidelizar clientes.';
+
+            const response = await fetch('/api/generate-seo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    technical_specs: [productContext, descContext]
+                })
+            });
+
+            if (!response.ok) throw new Error('Error IA');
+            const resultData = await response.json();
+            const aiData = resultData.data || {};
+
+            setHeroForm(prev => ({
+                ...prev,
+                title1: aiData.seo_title ? aiData.seo_title.toUpperCase() : "SOLUCIONES ECO",
+                paragraph1: aiData.seo_description || "Descubre el merchandising del futuro."
+            }));
+
+            alert('¡Textos SEO-Hero generados con éxito! Puedes ajustar las cajas antes de guardar.');
+        } catch (err) {
+            console.error(err);
+            alert('Error regenerando textos.');
+        } finally {
+            setIsGeneratingAI(false);
+            setAiStatus('');
         }
     };
 
@@ -2791,6 +2871,101 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                             <img src={activeImage} style={{ width: "30px", height: "30px", borderRadius: "50%", objectFit: "cover", border: "1px solid var(--accent-turquoise)" }} />
                                                         </div>
                                                     )}
+                                                </div>
+
+                                                <div style={{ background: "rgba(255,255,255,0.01)", border: "1px solid rgba(255,255,255,0.03)", borderRadius: "8px", padding: "30px", marginBottom: "40px" }}>
+                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "25px", flexWrap: "wrap", gap: "15px" }}>
+                                                        <h3 style={{ fontSize: "14px", fontWeight: "900", color: "var(--accent-gold)", letterSpacing: "2px", margin: 0 }}>TEXTOS Y LLAMADO A LA ACCIÓN (GLOBAL HERO)</h3>
+                                                        <div style={{ display: "flex", gap: "15px" }}>
+                                                            <button
+                                                                onClick={handleGenerateHeroAI}
+                                                                disabled={isGeneratingAI}
+                                                                style={{ padding: "12px 24px", background: "rgba(255,255,255,0.05)", color: "white", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", fontSize: "11px", fontWeight: "900", cursor: isGeneratingAI ? "not-allowed" : "pointer", textTransform: "uppercase", letterSpacing: "2px", display: "flex", alignItems: "center", gap: "10px", transition: 'all 0.3s' }}
+                                                            >
+                                                                {isGeneratingAI ? <Loader2 size={16} className="animate-spin" /> : <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#9d00ff' }} />}
+                                                                AUTO-GENERAR TEXTOS (IA)
+                                                            </button>
+                                                            <button
+                                                                onClick={handleSaveHeroTexts}
+                                                                disabled={isSaving}
+                                                                style={{ padding: "12px 24px", background: "var(--accent-turquoise)", color: "black", border: "none", borderRadius: "4px", fontSize: "11px", fontWeight: "900", cursor: isSaving ? "not-allowed" : "pointer", textTransform: "uppercase", letterSpacing: "2px", display: "flex", alignItems: "center", gap: "10px", transition: 'all 0.3s' }}
+                                                            >
+                                                                {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                                                                GUARDAR AJUSTES
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Layout Controls */}
+                                                    <div style={{ display: "flex", gap: "20px", marginBottom: "25px", background: "rgba(0,212,189,0.05)", padding: "15px", borderRadius: "4px", border: "1px dashed rgba(0,212,189,0.2)" }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <label style={{ display: "block", fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "8px", fontWeight: "800", letterSpacing: "1px" }}>ALINEACIÓN HORIZONTAL (X)</label>
+                                                            <div style={{ display: "flex", gap: "10px" }}>
+                                                                {['left', 'center', 'right'].map(pos => (
+                                                                    <button
+                                                                        key={pos}
+                                                                        onClick={() => setHeroForm(prev => ({ ...prev, text_align_h: pos }))}
+                                                                        style={{ flex: 1, padding: "8px", background: heroForm.text_align_h === pos ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.05)', color: heroForm.text_align_h === pos ? 'black' : '#888', border: "none", borderRadius: "2px", fontSize: "10px", fontWeight: "800", textTransform: "uppercase", cursor: "pointer" }}
+                                                                    >
+                                                                        {pos === 'left' ? 'Izquierda' : pos === 'right' ? 'Derecha' : 'Centro'}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ flex: 1 }}>
+                                                            <label style={{ display: "block", fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "8px", fontWeight: "800", letterSpacing: "1px" }}>ALINEACIÓN VERTICAL (Y)</label>
+                                                            <div style={{ display: "flex", gap: "10px" }}>
+                                                                {['top', 'center', 'bottom'].map(pos => (
+                                                                    <button
+                                                                        key={pos}
+                                                                        onClick={() => setHeroForm(prev => ({ ...prev, text_align_v: pos }))}
+                                                                        style={{ flex: 1, padding: "8px", background: heroForm.text_align_v === pos ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.05)', color: heroForm.text_align_v === pos ? 'black' : '#888', border: "none", borderRadius: "2px", fontSize: "10px", fontWeight: "800", textTransform: "uppercase", cursor: "pointer" }}
+                                                                    >
+                                                                        {pos === 'top' ? 'Arriba' : pos === 'bottom' ? 'Abajo' : 'Centro'}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px" }}>
+                                                        <div>
+                                                            <label style={{ display: "block", fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "8px", fontWeight: "800", letterSpacing: "1px" }}>TÍTULO PRINCIPAL (H1)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={heroForm.title1}
+                                                                onChange={(e) => setHeroForm(prev => ({ ...prev, title1: e.target.value }))}
+                                                                style={{ width: "100%", backgroundColor: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.05)", padding: "16px", color: "white", borderRadius: "4px", fontSize: "16px", outline: "none", fontFamily: "var(--font-heading)", letterSpacing: "1px", transition: 'border-color 0.3s' }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label style={{ display: "block", fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "8px", fontWeight: "800", letterSpacing: "1px" }}>SUBTÍTULO / SLOGAN</label>
+                                                            <input
+                                                                type="text"
+                                                                value={heroForm.paragraph1}
+                                                                onChange={(e) => setHeroForm(prev => ({ ...prev, paragraph1: e.target.value }))}
+                                                                style={{ width: "100%", backgroundColor: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.05)", padding: "16px", color: "white", borderRadius: "4px", fontSize: "14px", outline: "none", letterSpacing: "1px", transition: 'border-color 0.3s' }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label style={{ display: "block", fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "8px", fontWeight: "800", letterSpacing: "1px" }}>TEXTO DEL BOTÓN (CTA)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={heroForm.cta_text}
+                                                                onChange={(e) => setHeroForm(prev => ({ ...prev, cta_text: e.target.value }))}
+                                                                style={{ width: "100%", backgroundColor: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.05)", padding: "16px", color: "var(--accent-gold)", borderRadius: "4px", fontSize: "13px", fontWeight: "900", outline: "none", textTransform: "uppercase", letterSpacing: "2px", transition: 'border-color 0.3s' }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label style={{ display: "block", fontSize: "10px", color: "rgba(255,255,255,0.4)", marginBottom: "8px", fontWeight: "800", letterSpacing: "1px" }}>ENLACE DEL BOTÓN</label>
+                                                            <input
+                                                                type="text"
+                                                                value={heroForm.cta_link}
+                                                                onChange={(e) => setHeroForm(prev => ({ ...prev, cta_link: e.target.value }))}
+                                                                style={{ width: "100%", backgroundColor: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.05)", padding: "16px", color: "#888", borderRadius: "4px", fontSize: "13px", outline: "none", letterSpacing: "1px", fontFamily: "monospace", transition: 'border-color 0.3s' }}
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
 
                                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "40px" }}>

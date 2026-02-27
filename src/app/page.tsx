@@ -340,33 +340,45 @@ export default function Home() {
         className='hero-premium'
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => handleDrop(e, 'hero')}
-        style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}
+        style={{
+          height: '100vh',
+          display: 'flex',
+          alignItems: (heroContent as any).text_align_v === 'top' ? 'flex-start' : (heroContent as any).text_align_v === 'bottom' ? 'flex-end' : 'center',
+          justifyContent: (heroContent as any).text_align_h === 'left' ? 'flex-start' : (heroContent as any).text_align_h === 'right' ? 'flex-end' : 'center',
+          position: 'relative',
+          overflow: 'hidden',
+          padding: '120px 50px' // Aire extra para cuando el texto se alinea a los bordes
+        }}
       >
         <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
           {/* Se usa heroContent con un fallback seguro */}
           <img src={(heroContent as any).background_image || assets.hero} alt="Ecomoving" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, transparent 20%, #000 100%)' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, transparent 20%, rgba(0,0,0,0.8) 120%)' }} />
         </div>
-        <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', maxWidth: '1000px', padding: '0 20px' }}>
-          <motion.h1
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1 }}
-            style={{ fontSize: '5rem', fontFamily: 'var(--font-heading)', lineHeight: 1, marginBottom: '20px' }}
-          >
-            {(heroContent as any).title1 || (heroContent as any).title || 'ECOMOVING'}
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1, delay: 0.5 }}
-            style={{ fontSize: '1.5rem', color: '#888', marginBottom: '40px', letterSpacing: '2px' }}
-          >
-            {(heroContent as any).paragraph1 || (heroContent as any).subtitle || 'Merchandising Sustentable'}
-          </motion.p>
+        <div style={{ position: 'relative', zIndex: 2, textAlign: (heroContent as any).text_align_h || 'center', maxWidth: '1000px', width: '100%' }}>
+          {(heroContent as any).title1 && (
+            <motion.h1
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1 }}
+              style={{ fontSize: '5rem', fontFamily: 'var(--font-heading)', lineHeight: 1, marginBottom: '20px', textShadow: '0 4px 20px rgba(0,0,0,0.8)' }}
+            >
+              {(heroContent as any).title1}
+            </motion.h1>
+          )}
+          {(heroContent as any).paragraph1 && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 1, delay: 0.5 }}
+              style={{ fontSize: '1.5rem', color: '#ccc', marginBottom: '40px', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,0.9)' }}
+            >
+              {(heroContent as any).paragraph1}
+            </motion.p>
+          )}
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
-            <Link href={(heroContent as any).cta_link || '#'} className='cta-luxury' style={{ display: 'inline-block', padding: '15px 40px', background: 'var(--eco-accent-primary)', color: '#000', fontWeight: 900, borderRadius: '2px', letterSpacing: '2px', textDecoration: 'none' }}>
-              {(heroContent as any).cta_text || 'DESCUBRIR'}
+            <Link href={(heroContent as any).cta_link || '/catalogo'} className='cta-luxury' style={{ display: 'inline-block', padding: '15px 40px', background: 'var(--eco-accent-primary)', color: '#000', fontWeight: 900, borderRadius: '2px', letterSpacing: '2px', textDecoration: 'none', boxShadow: '0 0 20px rgba(0,212,189,0.4)' }}>
+              {(heroContent as any).cta_text || 'EXPLORAR CATÁLOGO'}
             </Link>
           </motion.div>
         </div>

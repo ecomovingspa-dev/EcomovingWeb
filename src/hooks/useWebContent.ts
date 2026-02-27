@@ -15,6 +15,8 @@ export interface HeroContent {
     meta_title?: string;
     gallery?: string[];
     drive_folder_id?: string;
+    text_align_h?: string;
+    text_align_v?: string;
 }
 
 export interface LayoutBlock {
