@@ -535,7 +535,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
             setInsumoOptimizedBlob(null);
             setInsumoOptimizedBlobs([]);
             setInsumoSavingPercentage(0);
-            if (insumoDestination !== 'catalog') {
+            if (insumoDestination === 'catalog') {
                 setActiveImage(null);
             }
 
