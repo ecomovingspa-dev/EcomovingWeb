@@ -2,7 +2,6 @@
 
 import React from 'react';
 import ProductCatalog from '@/components/ProductCatalog';
-import MediaSidebar from '@/components/MediaSidebar';
 import CatalogLeadMagnet from '@/components/CatalogLeadMagnet';
 import Link from 'next/link';
 import { Search, Settings } from 'lucide-react';
@@ -78,7 +77,6 @@ export default function CatalogPage() {
                 </div>
             </footer>
 
-            <MediaSidebar />
         </main>
     );
 }

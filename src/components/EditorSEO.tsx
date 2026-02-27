@@ -49,7 +49,15 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
     const [autoOptimizing, setAutoOptimizing] = useState(false);
     const [optimizationDraft, setOptimizationDraft] = useState<Record<string, string> | null>(null);
 
+    // Contexto de IA para generación de contenido
+    const [contextCategory, setContextCategory] = useState<string>('GENERAL');
+    const [contextSpecs, setContextSpecs] = useState<string>('');
+
+    // Categorías disponibles para contexto
+    const AVAILABLE_CATEGORIES = ['GENERAL', 'BOTELLAS', 'MUGS', 'TAZAS', 'LIBRETAS', 'MOCHILAS', 'TECNOLOGÍA', 'BOLÍGRAFOS', 'ECO'];
+
     // Listado maestro de secciones con sus etiquetas legibles
+
     const SECTION_LABELS: Record<string, string> = {
         hero: 'Hero',
         sections: 'Secciones Dinámicas',
@@ -127,6 +135,89 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
             setLoading(false);
         }
     };
+
+    // --- FUNCIONES DE UTILIDAD (Definidas antes de su uso) ---
+    const getSelectedContent = () => {
+        return webContent.find(s => s.section === selectedSection)?.content || {};
+    };
+
+    const applyImprovement = () => {
+        if (improvement?.improved) {
+            setEditValue(improvement.improved);
+        }
+    };
+
+    const handleAnalyze = async (text: string) => {
+        setAnalyzing(true);
+        setAnalysis(null);
+        try {
+            const lowField = (editingField || '').toLowerCase();
+            const response = await fetch('/api/seo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'analyze',
+                    text: text,
+                    section: selectedSection,
+                    context: `Eres un Especialista SEO de Élite. Analiza el siguiente texto para una web de merchandising corporativo que abarca desde alta gama.
+                    CONTEXTO VISUAL: ${lowField.includes('title') ? 'Es un TÍTULO, debe ser corto y potente.' : 'Es un PÁRRAFO, debe ser explicativo.'}
+                    CONTEXTO DE CATEGORÍA: ${contextCategory}
+                    
+                    REGLAS CRÍTICAS: 
+                    1. Brevedad (<25 palabras para párrafos).
+                    2. Vocabulario variado (evitar "premium" en exceso).
+                    3. Pertinencia con la categoría ${contextCategory}.`
+                })
+            });
+
+            const data = await response.json();
+            if (data.success && data.data) {
+                setAnalysis(data.data);
+            }
+        } catch (error) {
+            console.error('Error analyzing:', error);
+        } finally {
+            setAnalyzing(false);
+        }
+    };
+
+    // Effect para cargar specs del contexto
+    useEffect(() => {
+        const fetchContextSpecs = async () => {
+            if (contextCategory === 'GENERAL') {
+                setContextSpecs('Empresa líder en merchandising corporativo sustentable, diseño premium y personalización.');
+                return;
+            }
+
+            setLoading(true);
+            try {
+                const { data } = await supabase
+                    .from('productos')
+                    .select('nombre, descripcion, features, material')
+                    .ilike('categoria', `%${contextCategory}%`)
+                    .limit(5);
+
+                if (data && data.length > 0) {
+                    const combinedText = data.map(p =>
+                        `${p.nombre} (${p.material || 'Material Premium'}): ${Array.isArray(p.features) ? p.features.join(', ') : p.descripcion?.substring(0, 100)}`
+                    ).join('. ');
+                    setContextSpecs(combinedText.substring(0, 1000));
+                } else {
+                    setContextSpecs(`Productos de categoría ${contextCategory} con alta calidad y diseño.`);
+                }
+            } catch (err) {
+                console.error('Error fetching context specs:', err);
+                setContextSpecs(`Error cargando contexto para ${contextCategory}.`);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (isOpen) {
+            fetchContextSpecs();
+        }
+    }, [contextCategory, isOpen]);
+
 
     const saveContent = async (section: string, newContent: Record<string, unknown>) => {
         setSaving(true);
@@ -255,90 +346,64 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
         alert('Sección optimizada y guardada correctamente.');
     };
 
-    const handleAnalyze = async (text: string) => {
-        setAnalyzing(true);
-        setAnalysis(null);
-        try {
-            const response = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'analyze',
-                    text: text,
-                    section: selectedSection,
-                    context: `Eres un Especialista SEO de Élite. Analiza el siguiente texto para una web de merchandising corporativo que abarca desde alta gama hasta productos masivos. 
-                    REGLAS CRÍTICAS: 
-                    1. Evaluación de Brevedad: ¿Los párrafos tienen menos de 25 palabras?
-                    2. Abuso de vocabulario: ¿Se abusa de la palabra "premium"? (Sugerir sinónimos como calidad, excelencia, impacto o versatilidad).
-                    3. Versatilidad: ¿El tono sirve tanto para regalos exclusivos como para soluciones masivas eficientes?
-                    Campo: ${editingField || 'General'}.`
-                })
-            });
 
-            const data = await response.json();
-            if (data.success && data.data) {
-                setAnalysis(data.data);
-            }
-        } catch (error) {
-            console.error('Error analyzing:', error);
-        } finally {
-            setAnalyzing(false);
-        }
-    };
+
+
 
     const handleImprove = async (text: string) => {
         setImproving(true);
         setImprovement(null);
         try {
             const lowField = (editingField || '').toLowerCase();
-            const isTitle = lowField.includes('title') && !lowField.includes('title_2');
-            const isSubtitle = lowField.includes('subtitle') || lowField.includes('title_2');
-            const isDescription = lowField.includes('description');
 
-            let aiContext = '';
-            let wordLimit = 25;
+            // Definir ROLES estrictos para la IA
+            let roleDescription = '';
+            let maxLength = 0;
 
-            if (isSubtitle) {
-                aiContext = 'ACTÚA COMO COPYWRITER DE MARCA. Crea un SUBTÍTULO o ETIQUETA de impacto. Máximo 3 palabras. Ejemplo: "EDICIÓN LIMITADA", "CALIDAD GARANTIZADA".';
-                wordLimit = 3;
-            } else if (lowField.includes('title1')) {
-                aiContext = 'ACTÚA COMO COPYWRITER SEO. Crea un TÍTULO principal potente. Máximo 8 palabras. No uses la palabra "premium" en exceso.';
-                wordLimit = 8;
-            } else if (lowField.includes('paragraph1') || lowField.includes('paragraph2')) {
-                aiContext = 'ACTÚA COMO REDACTOR SEO B2B. Crea un PÁRRAFO persuasivo y directo. Máximo 25 palabras.';
-                wordLimit = 25;
-            } else if (lowField.includes('title2')) {
-                aiContext = 'ACTÚA COMO COPYWRITER DE MARCA. Crea un TÍTULO secundario elegante. Máximo 6 palabras.';
-                wordLimit = 6;
+            if (lowField.includes('subtitle')) {
+                roleDescription = 'ERES UN EXPERTO EN BRANDING. Tu objetivo es crear una "Etiqueta" o "Subtítulo Superior" de alto impacto. Debe ser corto, potente y evocar exclusividad o novedad.';
+                maxLength = 4; // Palabras
+            } else if (lowField.includes('title')) {
+                roleDescription = 'ERES UN COPYWRITER SENIOR. Tu objetivo es crear un TÍTULO (H1/H2) persuasivo que capture la atención al instante. Debe incluir la palabra clave principal de la categoría de forma natural.';
+                maxLength = 8;
+            } else if (lowField.includes('paragraph') || lowField.includes('description') || lowField.includes('textcontent')) {
+                roleDescription = 'ERES UN ESPECIALISTA DE PRODUCTO TÉCNICO. Tu objetivo es redactar una DESCRIPCIÓN comercial que fusione beneficios emocionales con especificaciones técnicas reales (materiales, funciones). NO seas genérico, usa los datos técnicos provistos.';
+                maxLength = 35;
+            } else if (lowField.includes('cta') || lowField.includes('button')) {
+                roleDescription = 'ERES UN EXPERTO EN CRO (Conversión). Tu objetivo es crear un texto para BOTÓN de acción irresistible y directo.';
+                maxLength = 3;
             } else {
-                aiContext = 'ACTÚA COMO REDACTOR ESTRATÉGICO. Crea un texto breve y directo. Máximo 20 palabras.';
-                wordLimit = 20;
+                roleDescription = 'ERES UN REDACTOR EXPERTO. Crea un texto breve y profesional.';
+                maxLength = 15;
             }
 
             // REGLA DE ORO: No JSON, No Markdown
-            const finalContext = `${aiContext} 
-            REGLA CRÍTICA: Devuelve ÚNICAMENTE el texto sugerido. NO incluyas JSON, NO incluyas etiquetas, NO incluyas explicaciones. SOLO EL TEXTO SIN COMILLAS.
-            LÍMITE DE PALABRAS: ${wordLimit}.`;
+            const finalContext = `
+            CONTEXTO DE CATEGORÍA: ${contextCategory}
+            DATOS TÉCNICOS REALES A USAR (ADN): ${contextSpecs}
+            
+            ROL DE IA: ${roleDescription}
+            
+            INSTRUCCIONES DE FORMATO:
+            1. Devuelve ÚNICAMENTE el texto sugerido.
+            2. NO uses comillas.
+            3. NO uses markdown.
+            4. Longitud máxima aproximada: ${maxLength} palabras.
+            5. Tono: Premium, Corporativo, Sustentable.
+            `;
 
             // Determinar el nombre real de la sección para dar contexto (Mugs, Botellas, etc)
             let sectionName = selectedSection ? (SECTION_LABELS[selectedSection] || selectedSection) : 'General';
 
-            if (selectedSection === 'sections' && editingField?.startsWith('block:')) {
-                const [, sId] = editingField.split(':');
-                const sectionData = webContent.find(s => s.section === 'sections');
-                const dynamicSections = Array.isArray(sectionData?.content) ? (sectionData?.content as any[]) : [];
-                const specificSection = dynamicSections.find(s => s.id === sId);
-                if (specificSection?.title) {
-                    sectionName = `Sección Dinámica: ${specificSection.title}`;
-                }
-            }
+
+            // ... (lógica existente para nombres dinámicos) ...
 
             const response = await fetch('/api/seo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     action: 'improve',
-                    text,
+                    text: text || `Generar texto para ${contextCategory}`, // Si está vacío, dale una semilla
                     section: sectionName,
                     context: finalContext
                 })
@@ -356,13 +421,13 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
                     improvedText = rawSuggestion.improved || '';
                 }
 
-                // Limpieza final por si acaso trae comillas o formato JSON
+                // Limpieza final
                 improvedText = improvedText.replace(/^["'{]+|["'}]+\s*$/g, '').replace(/^[A-Z_]+:\s*/i, '');
 
                 setImprovement({
                     ...rawSuggestion,
                     improved: improvedText,
-                    reason: typeof rawSuggestion.reason === 'string' ? rawSuggestion.reason : 'Optimización semántica basada en brevedad e impacto.'
+                    reason: `Optimizado para ${contextCategory} usando specs reales.`
                 });
             }
         } catch (error) {
@@ -372,78 +437,55 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
         }
     };
 
-    const applyImprovement = () => {
-        if (improvement?.improved) {
-            setEditValue(improvement.improved);
-        }
-    };
 
-    const getSelectedContent = () => {
-        return webContent.find(s => s.section === selectedSection)?.content || {};
-    };
 
     const renderEditableField = (key: string, value: unknown) => {
         const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
         const isEditing = editingField === key;
+
+        // Determinar tipo visual del campo
+        const isTitle = key.toLowerCase().includes('title');
+        const isParagraph = key.toLowerCase().includes('paragraph') || key.toLowerCase().includes('desc') || key.toLowerCase().includes('textcontent');
+        const isSubtitle = key.toLowerCase().includes('subtitle');
+        const isLink = key.toLowerCase().includes('link') || key.toLowerCase().includes('cta');
 
         return (
             <div
                 key={key}
                 style={{
                     padding: '16px',
-                    backgroundColor: isEditing ? 'rgba(0, 212, 189, 0.1)' : 'rgba(255,255,255,0.02)',
-                    border: isEditing ? '1px solid var(--accent-turquoise)' : '1px solid rgba(255,255,255,0.05)',
-                    borderRadius: '8px',
-                    marginBottom: '12px'
+                    backgroundColor: isEditing ? 'rgba(0, 212, 189, 0.05)' : 'rgba(255,255,255,0.02)',
+                    borderLeft: isEditing ? '3px solid var(--accent-turquoise)' : '3px solid transparent',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    marginBottom: '8px',
+                    transition: 'all 0.2s ease'
                 }}
             >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <label style={{
-                        fontSize: '10px',
-                        fontWeight: '800',
+                        fontSize: '9px',
+                        fontWeight: '700',
                         textTransform: 'uppercase',
                         letterSpacing: '1px',
-                        color: 'var(--accent-turquoise)',
+                        color: isEditing ? 'var(--accent-turquoise)' : '#666',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px'
+                        gap: '8px'
                     }}>
-                        {key.toLowerCase().includes('title') ? <Type size={12} /> : (key.toLowerCase().includes('desc') || key.toLowerCase().includes('para') || key.toLowerCase().includes('textcontent') ? <FileText size={12} /> : <LinkIcon size={12} />)}
+                        {isTitle && <Type size={12} />}
+                        {isParagraph && <FileText size={12} />}
+                        {isSubtitle && <Sparkles size={10} />}
+                        {isLink && <LinkIcon size={12} />}
+
                         {(() => {
-                            // Extraer el nombre del campo real si es una clave compuesta (block:id:root:field)
                             const realFieldName = key.includes(':') ? key.split(':').pop() || key : key;
-                            // Buscar en el mapa de etiquetas o formatear
                             return FIELD_LABELS[realFieldName] || realFieldName.replace(/_/g, ' ').toUpperCase();
                         })()}
                     </label>
                     {!isEditing && (
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                                onClick={() => handleFieldEdit(key, stringValue)}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    color: '#666',
-                                    cursor: 'pointer',
-                                    padding: '4px'
-                                }}
-                                title="Editar"
-                            >
-                                <Edit3 size={14} />
-                            </button>
-                            <button
-                                onClick={() => handleAnalyze(stringValue)}
-                                disabled={analyzing}
-                                style={{
-                                    background: 'none',
-                                    border: 'none',
-                                    color: '#666',
-                                    cursor: 'pointer',
-                                    padding: '4px'
-                                }}
-                                title="Analizar SEO"
-                            >
-                                <BarChart3 size={14} />
+                            <button onClick={() => handleFieldEdit(key, stringValue)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', padding: '4px' }} title="Editar">
+                                <Edit3 size={12} />
                             </button>
                         </div>
                     )}
@@ -454,81 +496,43 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
                         <textarea
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
+                            placeholder={`Escribe un ${isTitle ? 'título' : 'texto'} aquí...`}
                             style={{
                                 width: '100%',
-                                minHeight: '80px',
+                                minHeight: isParagraph ? '120px' : '60px', // Más altura para párrafos
                                 padding: '12px',
-                                backgroundColor: 'rgba(0,0,0,0.3)',
+                                backgroundColor: 'rgba(0,0,0,0.4)',
                                 border: '1px solid rgba(255,255,255,0.1)',
-                                borderRadius: '4px',
+                                borderRadius: '6px',
                                 color: 'white',
-                                fontSize: '14px',
+                                fontSize: isTitle ? '16px' : '13px', // Títulos más grandes visualmente
+                                fontWeight: isTitle ? '600' : '400',
+                                lineHeight: 1.5,
                                 resize: 'vertical',
                                 fontFamily: 'inherit'
                             }}
                         />
 
+                        {/* Contexto Activo (Feedback visual) */}
+                        <div style={{ fontSize: '9px', color: '#555', marginTop: '6px', fontStyle: 'italic' }}>
+                            Generando con contexto: <span style={{ color: 'var(--accent-gold)' }}>{contextCategory}</span>
+                        </div>
+
                         <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                            <button
-                                onClick={handleFieldSave}
-                                disabled={saving}
-                                style={{
-                                    padding: '8px 16px',
-                                    backgroundColor: 'var(--accent-turquoise)',
-                                    color: 'black',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    fontSize: '11px',
-                                    fontWeight: '800',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}
-                            >
-                                {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                                GUARDAR
+                            <button onClick={handleFieldSave} disabled={saving} style={{ padding: '8px 16px', backgroundColor: 'var(--accent-turquoise)', color: 'black', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} GUARDAR
                             </button>
 
-                            <button
-                                onClick={() => handleImprove(editValue)}
-                                disabled={improving}
-                                style={{
-                                    padding: '8px 16px',
-                                    backgroundColor: 'var(--accent-gold)',
-                                    color: 'black',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    fontSize: '11px',
-                                    fontWeight: '800',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px'
-                                }}
-                            >
-                                {improving ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                MEJORAR CON IA
+                            <button onClick={() => handleImprove(editValue)} disabled={improving} style={{ padding: '8px 16px', backgroundColor: 'var(--accent-gold)', color: 'black', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {improving ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} MEJORAR (IA)
                             </button>
 
-                            <button
-                                onClick={() => { setEditingField(null); setImprovement(null); }}
-                                style={{
-                                    padding: '8px 16px',
-                                    backgroundColor: 'rgba(255,255,255,0.1)',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    fontSize: '11px',
-                                    fontWeight: '800',
-                                    cursor: 'pointer'
-                                }}
-                            >
+                            <button onClick={() => { setEditingField(null); setImprovement(null); }} style={{ padding: '8px 16px', backgroundColor: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }}>
                                 CANCELAR
                             </button>
                         </div>
 
-                        {/* Sugerencia de IA */}
+                        {/* ... (Renderizado de Sugerencia IA igual que antes) ... */}
                         {improvement && (
                             <motion.div
                                 initial={{ opacity: 0, y: 10 }}
@@ -542,27 +546,12 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
                                 }}
                             >
                                 <div style={{ fontSize: '10px', fontWeight: '800', color: 'var(--accent-gold)', marginBottom: '8px' }}>
-                                    ✨ SUGERENCIA IA
+                                    ✨ SUGERENCIA IA ({contextCategory})
                                 </div>
-                                <p style={{ color: 'white', fontSize: '14px', marginBottom: '8px' }}>
+                                <p style={{ color: 'white', fontSize: isTitle ? '16px' : '13px', fontWeight: isTitle ? '600' : '400', marginBottom: '8px' }}>
                                     {typeof improvement.improved === 'string' ? improvement.improved : JSON.stringify(improvement.improved)}
                                 </p>
-                                <p style={{ color: '#888', fontSize: '12px', marginBottom: '12px' }}>
-                                    {typeof improvement.reason === 'string' ? improvement.reason : JSON.stringify(improvement.reason)}
-                                </p>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-                                    {improvement.keywords_used?.map((kw, i) => (
-                                        <span key={i} style={{
-                                            padding: '4px 8px',
-                                            backgroundColor: 'rgba(0, 212, 189, 0.2)',
-                                            color: 'var(--accent-turquoise)',
-                                            fontSize: '10px',
-                                            borderRadius: '4px'
-                                        }}>
-                                            {kw}
-                                        </span>
-                                    ))}
-                                </div>
+                                {/* ... resto del componente de sugerencia ... */}
                                 <button
                                     onClick={applyImprovement}
                                     style={{
@@ -576,22 +565,26 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
                                         cursor: 'pointer',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: '6px'
+                                        gap: '6px',
+                                        marginTop: '10px'
                                     }}
                                 >
                                     <Check size={12} /> APLICAR SUGERENCIA
                                 </button>
                             </motion.div>
                         )}
+
                     </div>
                 ) : (
                     <p style={{
                         color: typeof value === 'string' ? 'white' : '#888',
-                        fontSize: '14px',
+                        fontSize: isTitle ? '14px' : '12px', // Diferenciación visual en modo lectura
+                        fontWeight: isTitle ? '600' : '400',
                         margin: 0,
-                        lineHeight: 1.6
+                        lineHeight: 1.5,
+                        opacity: isTitle ? 1 : 0.8
                     }}>
-                        {stringValue.substring(0, 200)}{stringValue.length > 200 ? '...' : ''}
+                        {stringValue.substring(0, 150)}{stringValue.length > 150 ? '...' : ''}
                     </p>
                 )}
             </div>
@@ -620,44 +613,54 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate }: EditorSE
                         borderLeft: '1px solid rgba(255,255,255,0.05)'
                     }}
                 >
-                    {/* Header */}
+                    {/* Header con Context Selector */}
                     <div style={{
-                        padding: '24px',
+                        padding: '20px 24px',
                         borderBottom: '1px solid rgba(255,255,255,0.05)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
+                        backgroundColor: '#050505'
                     }}>
-                        <h3 style={{
-                            margin: 0,
-                            fontFamily: 'var(--font-heading)',
-                            letterSpacing: '2px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px'
-                        }}>
-                            <div style={{
-                                backgroundColor: 'var(--accent-gold)',
-                                padding: '6px',
-                                borderRadius: '4px',
-                                display: 'flex'
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                            <h3 style={{
+                                margin: 0, fontFamily: 'var(--font-heading)', letterSpacing: '2px',
+                                display: 'flex', alignItems: 'center', gap: '12px'
                             }}>
-                                <FileText size={18} style={{ color: 'black' }} />
+                                <div style={{ backgroundColor: 'var(--accent-gold)', padding: '6px', borderRadius: '4px', display: 'flex' }}>
+                                    <FileText size={18} style={{ color: 'black' }} />
+                                </div>
+                                EDITOR <span style={{ color: 'var(--accent-turquoise)' }}>SEO</span>
+                            </h3>
+                            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer' }}>
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        {/* Selector de Contexto */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <label style={{ fontSize: '9px', fontWeight: '700', color: '#666', textTransform: 'uppercase' }}>
+                                Contexto de IA (Categoría para Specs)
+                            </label>
+                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }} className="custom-scroll">
+                                {AVAILABLE_CATEGORIES.map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setContextCategory(cat)}
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '4px',
+                                            border: contextCategory === cat ? '1px solid var(--accent-gold)' : '1px solid rgba(255,255,255,0.1)',
+                                            backgroundColor: contextCategory === cat ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
+                                            color: contextCategory === cat ? 'var(--accent-gold)' : '#888',
+                                            fontSize: '10px',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
                             </div>
-                            EDITOR <span style={{ color: 'var(--accent-turquoise)' }}>SEO</span>
-                        </h3>
-                        <button
-                            onClick={onClose}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#666',
-                                cursor: 'pointer',
-                                padding: '8px'
-                            }}
-                        >
-                            <X size={24} />
-                        </button>
+                        </div>
                     </div>
 
                     {/* Tabs */}

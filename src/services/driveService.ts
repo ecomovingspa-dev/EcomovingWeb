@@ -1,26 +1,26 @@
+export interface DriveItem {
+    id: string;
+    name: string;
+    type: 'file' | 'folder';
+    thumbnail: string | null;
+}
 
-export async function fetchDriveThumbnails(folderId: string): Promise<string[]> {
+export async function fetchDriveItems(folderId: string): Promise<DriveItem[]> {
     try {
-        // En un entorno real, usaríamos la API de Google con un API Key o Service Account.
-        // Dado que el usuario está usando técnicas de scraping/thumbnails en sus scripts:
-        // Intentamos obtener el HTML de la carpeta (vía un proxy o directamente si es posible)
-        const url = `https://drive.google.com/drive/folders/${folderId}`;
-        const response = await fetch(url);
-        const text = await response.text();
+        // Llamamos a nuestro propio API route en el servidor para evitar CORS
+        const response = await fetch(`/api/drive-folder?folderId=${folderId}`);
+        if (!response.ok) throw new Error('Failed to fetch from drive-folder API');
 
-        // Patrón para IDs de archivos de Google Drive
-        const regex = /"1[a-zA-Z0-9_-]{32}"/g;
-        const matches = text.match(regex);
-
-        if (!matches) return [];
-
-        const uniqueIds = [...new Set(matches.map(m => m.replace(/"/g, '')))];
-        const fileIds = uniqueIds.filter(id => id !== folderId);
-
-        // Convertimos a links de thumbnails de alta resolución
-        return fileIds.map(id => `https://drive.google.com/thumbnail?id=${id}&sz=w1200`);
+        const data = await response.json();
+        return data.items || [];
     } catch (err) {
-        console.error('Error fetching drive thumbnails:', err);
+        console.error('Error fetching drive items:', err);
         return [];
     }
+}
+
+// Mantener por compatibilidad temporal si es necesario, pero migrar a fetchDriveItems
+export async function fetchDriveThumbnails(folderId: string): Promise<string[]> {
+    const items = await fetchDriveItems(folderId);
+    return items.filter(i => i.type === 'file' && i.thumbnail).map(i => i.thumbnail!);
 }

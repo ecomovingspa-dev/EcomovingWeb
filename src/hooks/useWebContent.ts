@@ -22,6 +22,9 @@ export interface LayoutBlock {
     label: string;
     type?: 'image' | 'text' | 'both';
     image?: string;
+    // Editorial Content for Free Canvas
+    blockTitle?: string;
+    blockParagraph?: string;
     textContent?: string;
     bgColor?: string;
     textColor?: string;
@@ -41,12 +44,22 @@ export interface LayoutBlock {
     writingMode?: 'horizontal-tb' | 'vertical-rl' | 'vertical-lr';
     fontSize?: string; // ej: "2rem"
     gallery?: string[]; // Para diapositivas dentro del bloque
+    galleryAnimation?: 'fade' | 'slide-h' | 'slide-v' | 'zoom' | 'none';
 
     // Transformación Experta
     transform_zoom?: number;
-    transform_rotation?: number;
-    transform_flipX?: boolean;
+    transform_posX?: number; // 0-100%
+    transform_posY?: number; // 0-100%
     transform_aspectRatio?: string;
+
+    // Advanced Typography (New)
+    titleSize?: string;     // Tamaños: 18px, 24px, 32px, 48px, 64px
+    fontWeight?: string;    // 400, 600, 700, 900
+    textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+    letterSpacing?: string; // normal, 1px, 2px, 4px, -1px
+    lineHeight?: string;    // 1.2, 1.5, 1.8, 2.0
+    fontStyle?: 'normal' | 'italic';
+    fontFamily?: 'sans' | 'serif' | 'mono';
 }
 
 export interface DynamicSection {

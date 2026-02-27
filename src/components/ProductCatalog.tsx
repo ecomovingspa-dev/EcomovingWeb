@@ -38,43 +38,14 @@ export default function ProductCatalog({
 
     const fetchApprovedProducts = async () => {
         try {
-            // Intentar cargar desde la nueva tabla 'productos' (Catálogo Vivo Optimizado)
+            // Carga desde la tabla unificada 'productos' (Solo los aprobados para el público)
             const { data, error } = await supabase
                 .from('productos')
                 .select('*')
+                .eq('status', 'approved')
                 .order('created_at', { ascending: false });
 
-            if (error) {
-                console.warn('Error loading from "productos" table, falling back to buffer/json:', error);
-
-                // Fallback 1: agent_buffer aprobado
-                const { data: bufferData, error: bufferError } = await supabase
-                    .from('agent_buffer')
-                    .select('*')
-                    .eq('status', 'approved')
-                    .order('found_at', { ascending: false });
-
-                if (bufferError || !bufferData || bufferData.length === 0) {
-                    // Fallback 2: catalog.json
-                    const catalogData = await import('../data/catalog.json');
-                    setProducts(catalogData.default);
-                    return;
-                }
-
-                const formatted = bufferData.map((item: any) => ({
-                    id: item.id,
-                    name: item.name,
-                    description: (item.original_description && item.original_description !== item.name) ? item.original_description : '',
-                    features: item.technical_specs?.specs || item.features || [],
-                    image: item.images?.[0] || item.image || '',
-                    images: item.images || [],
-                    category: item.category || item.technical_specs?.category || 'Otros',
-                    wholesaler: item.wholesaler || 'Premium',
-                    isPremium: item.technical_specs?.is_premium || false
-                }));
-                setProducts(formatted);
-                return;
-            }
+            if (error) throw error;
 
             if (data && data.length > 0) {
                 const formattedProducts: Product[] = data.map((item: any) => ({
@@ -92,32 +63,12 @@ export default function ProductCatalog({
                 console.log('✅ Catálogo Vivo cargado desde Supabase:', formattedProducts.length);
                 setProducts(formattedProducts);
             } else {
-                // Si la tabla productos está vacía, usar el buffer aprobado
-                const { data: bufferData } = await supabase
-                    .from('agent_buffer')
-                    .select('*')
-                    .eq('status', 'approved');
-
-                if (bufferData && bufferData.length > 0) {
-                    const formatted = bufferData.map((item: any) => ({
-                        id: item.id,
-                        name: item.name,
-                        description: item.original_description || '',
-                        features: item.technical_specs?.specs || [],
-                        image: item.images?.[0] || '',
-                        images: item.images || [],
-                        category: item.category || 'Otros',
-                        wholesaler: item.wholesaler || 'Premium',
-                        isPremium: item.technical_specs?.is_premium || false
-                    }));
-                    setProducts(formatted);
-                } else {
-                    const catalogData = await import('../data/catalog.json');
-                    setProducts(catalogData.default);
-                }
+                // Si la tabla productos está vacía, fallback a catalog.json estático
+                const catalogData = await import('../data/catalog.json');
+                setProducts(catalogData.default);
             }
         } catch (error) {
-            console.error('Error fetching products:', error);
+            console.error('Error fetching products from unified table:', error);
             const catalogData = await import('../data/catalog.json');
             setProducts(catalogData.default);
         }
@@ -176,50 +127,29 @@ export default function ProductCatalog({
             const otherImgs = (selectedProduct.images || []).filter(img => img !== mainImg);
             const orderedImages = [mainImg, ...otherImgs].filter(Boolean);
 
-            // Determinar si el producto viene de 'productos' o del buffer
-            const { data: isLive } = await supabase
+            // Edición directa en la tabla unificada 'productos'
+            const { error } = await supabase
                 .from('productos')
-                .select('id')
-                .eq('id', selectedProduct.id)
-                .maybeSingle();
+                .update({
+                    nombre: selectedProduct.name,
+                    descripcion: selectedProduct.description,
+                    categoria: selectedProduct.category,
+                    imagen_principal: mainImg,
+                    imagenes_galeria: orderedImages,
+                    features: selectedProduct.features,
+                    wholesaler: selectedProduct.wholesaler,
+                    is_premium: selectedProduct.isPremium
+                })
+                .eq('id', selectedProduct.id);
 
-            if (isLive) {
-                const { error } = await supabase
-                    .from('productos')
-                    .update({
-                        nombre: selectedProduct.name,
-                        descripcion: selectedProduct.description,
-                        categoria: selectedProduct.category,
-                        imagen_principal: mainImg,
-                        imagenes_galeria: orderedImages,
-                        features: selectedProduct.features,
-                        wholesaler: selectedProduct.wholesaler
-                    })
-                    .eq('id', selectedProduct.id);
-
-                if (error) throw error;
-            } else {
-                const { error } = await supabase
-                    .from('agent_buffer')
-                    .update({
-                        name: selectedProduct.name,
-                        original_description: selectedProduct.description,
-                        technical_specs: {
-                            specs: selectedProduct.features,
-                            category: selectedProduct.category
-                        },
-                        images: orderedImages,
-                        wholesaler: selectedProduct.wholesaler
-                    })
-                    .eq('id', selectedProduct.id);
-
-                if (error) throw error;
-            }
+            if (error) throw error;
 
             alert('Producto actualizado exitosamente en el catálogo');
         } catch (error: any) {
             console.error('Error updating product:', error);
             alert(`Error al sincronizar con la base de datos: ${error.message || 'Error desconocido'}`);
+        } finally {
+            setTimeout(() => setIsEditing(false), 500);
         }
     };
 
@@ -234,20 +164,20 @@ export default function ProductCatalog({
             return;
         }
 
-        if (confirm('¿Estás seguro de que quieres eliminar este producto del catálogo final?')) {
+        if (confirm('¿Estás seguro de que quieres eliminar este producto del catálogo PERMANENTEMENTE?')) {
             try {
                 const { error } = await supabase
-                    .from('agent_buffer')
-                    .update({ status: 'rejected' })
+                    .from('productos')
+                    .delete()
                     .eq('id', id);
 
                 if (error) throw error;
 
                 setProducts(products.filter(p => p.id !== id));
                 setSelectedProduct(null);
-                alert('Producto eliminado del catálogo');
+                alert('Producto eliminado exitosamente');
             } catch (error) {
-                console.error('Error deleting product:', error);
+                console.error('Error deleting product from unified table:', error);
                 alert('Error al eliminar el producto');
             }
         }
@@ -279,178 +209,171 @@ export default function ProductCatalog({
 
     return (
         <div className="catalog-wrapper">
-            <div className="container">
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '60px', marginTop: '40px', flexWrap: 'wrap' }}>
-                    {/* Dropdown de Categorías */}
-                    <div style={{ position: 'relative' }}>
-                        <button
-                            onClick={() => setIsExpandingCategories(!isExpandingCategories)}
-                            style={{
-                                backgroundColor: 'transparent',
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                color: 'white',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                letterSpacing: '2px',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                padding: '15px 30px',
-                                borderRadius: '2px',
-                                textTransform: 'uppercase',
-                                background: isExpandingCategories ? 'rgba(0,212,189,0.1)' : 'transparent'
-                            }}
-                        >
-                            CATEGORIAS <ChevronRight size={14} style={{ transform: isExpandingCategories ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />
-                        </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '60px', marginTop: '40px', flexWrap: 'wrap' }}>
+                {/* Dropdown de Categorías */}
+                <div style={{ position: 'relative' }}>
+                    <button
+                        onClick={() => setIsExpandingCategories(!isExpandingCategories)}
+                        style={{
+                            backgroundColor: 'transparent',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            color: 'white',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            letterSpacing: '2px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            padding: '15px 30px',
+                            borderRadius: '2px',
+                            textTransform: 'uppercase',
+                            background: isExpandingCategories ? 'rgba(0,212,189,0.1)' : 'transparent'
+                        }}
+                    >
+                        CATEGORIAS <ChevronRight size={14} style={{ transform: isExpandingCategories ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }} />
+                    </button>
 
-                        <AnimatePresence>
-                            {isExpandingCategories && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: 10 }}
-                                    style={{
-                                        position: 'absolute',
-                                        top: '100%',
-                                        left: 0,
-                                        width: '280px',
-                                        backgroundColor: '#0a0a0a',
-                                        border: '1px solid rgba(255,255,255,0.1)',
-                                        borderRadius: '4px',
-                                        marginTop: '10px',
-                                        boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
-                                        maxHeight: '400px',
-                                        overflowY: 'auto',
-                                        zIndex: 1000
-                                    }}
-                                    className="custom-scroll"
+                    <AnimatePresence>
+                        {isExpandingCategories && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    width: '280px',
+                                    backgroundColor: '#0a0a0a',
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '4px',
+                                    marginTop: '10px',
+                                    boxShadow: '0 20px 40px rgba(0,0,0,0.8)',
+                                    maxHeight: '400px',
+                                    overflowY: 'auto',
+                                    zIndex: 1000
+                                }}
+                                className="custom-scroll"
+                            >
+                                <button
+                                    onClick={() => { setFilter('Todos'); setIsExpandingCategories(false); }}
+                                    style={{ width: '100%', padding: '15px 25px', textAlign: 'left', background: 'none', border: 'none', color: filter === 'Todos' ? 'var(--accent-turquoise)' : '#888', fontSize: '12px', fontWeight: '700', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                                 >
+                                    TODAS LAS CATEGORÍAS
+                                </button>
+                                {specialCategories.sort().map(cat => (
                                     <button
-                                        onClick={() => { setFilter('Todos'); setIsExpandingCategories(false); }}
-                                        style={{ width: '100%', padding: '15px 25px', textAlign: 'left', background: 'none', border: 'none', color: filter === 'Todos' ? 'var(--accent-turquoise)' : '#888', fontSize: '12px', fontWeight: '700', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                                        key={cat}
+                                        onClick={() => { setFilter(cat); setIsExpandingCategories(false); }}
+                                        style={{ width: '100%', padding: '15px 25px', textAlign: 'left', background: 'none', border: 'none', color: filter === cat ? 'var(--accent-turquoise)' : '#888', fontSize: '11px', fontWeight: '600', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)', textTransform: 'uppercase' }}
                                     >
-                                        TODAS LAS CATEGORÍAS
+                                        {cat}
                                     </button>
-                                    {specialCategories.sort().map(cat => (
-                                        <button
-                                            key={cat}
-                                            onClick={() => { setFilter(cat); setIsExpandingCategories(false); }}
-                                            style={{ width: '100%', padding: '15px 25px', textAlign: 'left', background: 'none', border: 'none', color: filter === cat ? 'var(--accent-turquoise)' : '#888', fontSize: '11px', fontWeight: '600', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.05)', textTransform: 'uppercase' }}
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+
+                <div style={{ width: '1px', height: '30px', background: 'rgba(255,255,255,0.1)' }} />
+
+                {/* Botones de Acceso Rápido */}
+                <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                    <button
+                        onClick={() => setFilter('ECOLOGICOS')}
+                        style={{
+                            padding: '12px 25px',
+                            borderRadius: '2px',
+                            border: '1px solid',
+                            borderColor: filter === 'ECOLOGICOS' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)',
+                            backgroundColor: filter === 'ECOLOGICOS' ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
+                            color: filter === 'ECOLOGICOS' ? 'var(--accent-gold)' : '#aaa',
+                            fontSize: '11px',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s',
+                            letterSpacing: '2px',
+                            textTransform: 'uppercase'
+                        }}
+                    >
+                        PRODUCTOS ECO
+                    </button>
+                    <button
+                        onClick={() => setFilter('PREMIUM')}
+                        style={{
+                            padding: '12px 25px',
+                            borderRadius: '2px',
+                            border: '1px solid',
+                            borderColor: filter === 'PREMIUM' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)',
+                            backgroundColor: filter === 'PREMIUM' ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
+                            color: filter === 'PREMIUM' ? 'var(--accent-gold)' : '#aaa',
+                            fontSize: '11px',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s',
+                            letterSpacing: '2px',
+                            textTransform: 'uppercase'
+                        }}
+                    >
+                        PRODUCTOS PREMIUM
+                    </button>
+                </div>
+            </div>
+
+            <div className="catalog-grid">
+                {filteredProducts.map((product, index) => (
+                    <button
+                        key={product.id}
+                        className={`product-card-button ${product.isPremium ? 'hero-visual' : ''}`}
+                        onClick={() => {
+                            console.log('CONSTRUCTOR: Opening product detail:', product.name);
+                            setSelectedProduct(product);
+                            setActiveImage(product.image);
+                            setIsEditing(false);
+                        }}
+                    >
+                        <div className="product-image-container">
+                            <img src={product.image} alt={product.name} className="product-img" />
+                            <div className="product-overlay">
+                                <div className="product-category">
+                                    {product.isPremium && <span className="premium-badge">SELECCIÓN PREMIUM</span>}
+                                    {product.category}
+                                </div>
+                                <Info className="info-icon" />
+                            </div>
+                        </div>
+                        <div className="product-meta">
+                            <div className="product-meta-flex">
+                                <h3>{product.name}</h3>
+                                {adminMode && (
+                                    <div className="admin-actions">
+                                        <div
+                                            className="admin-btn edit"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedProduct(product);
+                                                setIsEditing(true);
+                                            }}
                                         >
-                                            {cat}
-                                        </button>
-                                    ))}
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-
-                    <div style={{ width: '1px', height: '30px', background: 'rgba(255,255,255,0.1)' }} />
-
-                    {/* Botones de Acceso Rápido */}
-                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                        <button
-                            onClick={() => setFilter('ECOLOGICOS')}
-                            style={{
-                                padding: '12px 25px',
-                                borderRadius: '2px',
-                                border: '1px solid',
-                                borderColor: filter === 'ECOLOGICOS' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)',
-                                backgroundColor: filter === 'ECOLOGICOS' ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
-                                color: filter === 'ECOLOGICOS' ? 'var(--accent-gold)' : '#aaa',
-                                fontSize: '11px',
-                                fontWeight: '800',
-                                cursor: 'pointer',
-                                transition: 'all 0.3s',
-                                letterSpacing: '2px',
-                                textTransform: 'uppercase'
-                            }}
-                        >
-                            PRODUCTOS ECO
-                        </button>
-                        <button
-                            onClick={() => setFilter('PREMIUM')}
-                            style={{
-                                padding: '12px 25px',
-                                borderRadius: '2px',
-                                border: '1px solid',
-                                borderColor: filter === 'PREMIUM' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)',
-                                backgroundColor: filter === 'PREMIUM' ? 'rgba(212, 175, 55, 0.1)' : 'transparent',
-                                color: filter === 'PREMIUM' ? 'var(--accent-gold)' : '#aaa',
-                                fontSize: '11px',
-                                fontWeight: '800',
-                                cursor: 'pointer',
-                                transition: 'all 0.3s',
-                                letterSpacing: '2px',
-                                textTransform: 'uppercase'
-                            }}
-                        >
-                            PRODUCTOS PREMIUM
-                        </button>
-                    </div>
-                </div>
-
-                <div className="catalog-grid">
-                    {filteredProducts.map((product, index) => (
-                        <motion.div
-                            key={product.id}
-                            layoutId={`card-${product.id}`}
-                            className={`product-card-premium ${product.isPremium ? 'hero-visual' : ''}`}
-                            onClick={() => {
-                                setSelectedProduct(product);
-                                setActiveImage(product.image);
-                                setIsEditing(false);
-                            }}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            whileHover={{ y: -10 }}
-                        >
-                            <div className="product-image-container">
-                                <img src={product.image} alt={product.name} className="product-img" />
-                                <div className="product-overlay">
-                                    <div className="product-category">
-                                        {product.isPremium && <span className="premium-badge">Selección Premium</span>}
-                                        {product.category}
-                                    </div>
-                                    <Info className="info-icon" />
-                                </div>
-                            </div>
-                            <div className="product-meta">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <h3>{product.name}</h3>
-                                    {adminMode && (
-                                        <div style={{ display: 'flex', gap: '10px' }}>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setSelectedProduct(product);
-                                                    setIsEditing(true);
-                                                }}
-                                                style={{ background: 'none', border: 'none', color: 'var(--accent-turquoise)', cursor: 'pointer', padding: '5px' }}
-                                            >
-                                                <Edit3 size={16} />
-                                            </button>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDelete(product.id);
-                                                }}
-                                                style={{ background: 'none', border: 'none', color: '#ff4444', cursor: 'pointer', padding: '5px' }}
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <Edit3 size={16} />
                                         </div>
-                                    )}
-                                </div>
+                                        <div
+                                            className="admin-btn delete"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(product.id);
+                                            }}
+                                        >
+                                            <Trash2 size={16} />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        </motion.div>
-                    ))}
-
-
-                </div>
+                        </div>
+                    </button>
+                ))}
             </div>
 
             {/* Modal de Detalle / Edición */}
@@ -460,33 +383,55 @@ export default function ProductCatalog({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
+                        onClick={() => setSelectedProduct(null)}
                         style={{
                             position: 'fixed',
                             inset: 0,
-                            backgroundColor: 'rgba(0,0,0,0.92)',
-                            backdropFilter: 'blur(30px)',
-                            zIndex: 100000,
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            width: '100vw',
+                            height: '100vh',
+                            background: 'rgba(8, 8, 8, 0.96)',
+                            backdropFilter: 'blur(16px)',
+                            WebkitBackdropFilter: 'blur(16px)',
+                            zIndex: 999999,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            padding: '40px'
                         }}
-                        onClick={() => setSelectedProduct(null)}
                     >
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0, y: 20 }}
                             animate={{ scale: 1, opacity: 1, y: 0 }}
                             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                            className="modal-content"
                             onClick={(e) => e.stopPropagation()}
+                            style={{
+                                background: '#0A0A0A',
+                                width: '1200px',
+                                maxWidth: '95vw',
+                                maxHeight: '92vh',
+                                height: '92vh',
+                                borderRadius: '4px',
+                                overflow: 'hidden',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                position: 'relative',
+                                border: '1px solid rgba(255,255,255,0.06)',
+                                boxShadow: '0 40px 120px rgba(0,0,0,0.9)',
+                            }}
                         >
-                            <div className="modal-inner">
-                                <div className="modal-image-stage">
+                            {/* FILA SUPERIOR: Imagen izq | Info der */}
+                            <div style={{ display: 'flex', flexDirection: 'row', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+
+                                {/* COLUMNA IZQUIERDA: Imagen principal + miniaturas */}
+                                <div style={{ width: '480px', flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#000', overflow: 'hidden' }}>
+
+                                    {/* Visor imagen principal */}
                                     <div
-                                        className="main-image-container"
-                                        onDragOver={(e) => {
-                                            if (isEditing) e.preventDefault();
-                                        }}
+                                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#050505', position: 'relative' }}
+                                        onDragOver={(e) => { if (isEditing) e.preventDefault(); }}
                                         onDrop={(e) => {
                                             if (!isEditing) return;
                                             e.preventDefault();
@@ -502,81 +447,103 @@ export default function ProductCatalog({
                                             key={activeImage || selectedProduct.image}
                                             initial={{ opacity: 0, scale: 0.98 }}
                                             animate={{ opacity: 1, scale: 1 }}
-                                            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                                             src={activeImage || selectedProduct.image}
                                             alt={selectedProduct.name}
-                                            className="modal-hero-image"
+                                            style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'drop-shadow(0 20px 60px rgba(0,0,0,0.9))' }}
                                         />
                                         {isEditing && (
                                             <div className="image-edit-overlay">
                                                 <ImageIcon size={48} style={{ marginBottom: '20px', opacity: 0.2 }} />
                                             </div>
                                         )}
+                                    </div>
 
-                                        {/* Galería de Miniaturas como Overlay */}
-                                        <div className="modal-thumbnails-overlay">
-                                            <div className="thumbnails-scroll">
-                                                {(galleryImages.length > 0 ? galleryImages : [selectedProduct.image]).map((img, idx) => (
-                                                    <motion.div
-                                                        key={idx}
-                                                        whileHover={{ scale: 1.1 }}
-                                                        whileTap={{ scale: 0.9 }}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setActiveImage(img);
-                                                        }}
-                                                        className={`thumbnail-item ${(activeImage || selectedProduct.image) === img ? 'active' : ''}`}
-                                                    >
-                                                        <img src={img} alt={`${selectedProduct.name} - Vista ${idx + 1}`} />
-                                                    </motion.div>
-                                                ))}
-                                            </div>
+                                    {/* Fila doble de miniaturas */}
+                                    <div style={{ height: '174px', flexShrink: 0, background: '#0a0a0a', borderTop: '1px solid rgba(255,255,255,0.05)', padding: '8px', overflowX: 'auto', overflowY: 'hidden' }}>
+                                        <div style={{ display: 'grid', gridTemplateRows: 'repeat(2, 75px)', gridAutoFlow: 'column', gridAutoColumns: '75px', gap: '8px', height: '100%' }}>
+                                            {(galleryImages.length > 0 ? galleryImages : [selectedProduct.image]).map((img, idx) => (
+                                                <motion.div
+                                                    key={idx}
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={(e) => { e.stopPropagation(); setActiveImage(img || ''); }}
+                                                    style={{
+                                                        width: '75px', height: '75px', overflow: 'hidden', cursor: 'pointer',
+                                                        borderRadius: '2px', opacity: (activeImage || selectedProduct.image) === img ? 1 : 0.6,
+                                                        border: (activeImage || selectedProduct.image) === img ? '1px solid #00E5A0' : '1px solid rgba(255,255,255,0.05)',
+                                                        background: '#151515', transition: 'all 0.3s ease', flexShrink: 0
+                                                    }}
+                                                >
+                                                    <img src={img || ''} alt={`${selectedProduct.name} - Vista ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                </motion.div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="modal-text-col">
+                                {/* COLUMNA DERECHA: Info del producto — crece al ancho disponible */}
+                                <div style={{ flex: 1, background: '#080808', padding: '40px', overflowY: 'auto', display: 'flex', flexDirection: 'column', borderLeft: '1px solid rgba(255,255,255,0.03)', scrollbarWidth: 'none' }}>
                                     {isEditing ? (
                                         <div className="edit-form">
-                                            <div style={{ marginBottom: '15px' }}>
-                                                <label style={{ display: 'block', fontSize: '10px', color: '#666', marginBottom: '5px', fontWeight: '800' }}>CATEGORÍA OFICIAL</label>
-                                                <select
-                                                    className="edit-input-category"
-                                                    value={selectedProduct.category}
-                                                    onChange={(e) => handleLocalUpdate({ ...selectedProduct, category: e.target.value })}
-                                                    style={{ width: '100%', backgroundColor: '#111', border: '1px solid #333', color: 'white', padding: '12px', borderRadius: '6px', fontSize: '13px' }}
-                                                >
-                                                    <option value="">Seleccionar Categoría...</option>
-                                                    {specialCategories.map(cat => (
-                                                        <option key={cat} value={cat}>{cat}</option>
-                                                    ))}
-                                                    <option value="Otros">Otros</option>
-                                                </select>
+                                            <div className="edit-grid-system">
+                                                <div className="edit-field-group">
+                                                    <label>CATEGORÍA OFICIAL</label>
+                                                    <select
+                                                        className="edit-input-category"
+                                                        value={selectedProduct.category}
+                                                        onChange={(e) => {
+                                                            if (selectedProduct) {
+                                                                handleLocalUpdate({ ...selectedProduct, category: e.target.value });
+                                                            }
+                                                        }}
+                                                    >
+                                                        <option value="">Seleccionar...</option>
+                                                        {specialCategories.map(cat => (
+                                                            <option key={cat} value={cat}>{cat}</option>
+                                                        ))}
+                                                        <option value="Otros">Otros</option>
+                                                    </select>
+                                                </div>
+                                                <div className="edit-field-group">
+                                                    <label>NOMBRE PRODUCTO</label>
+                                                    <input
+                                                        className="edit-input-title-compact"
+                                                        value={selectedProduct.name}
+                                                        onChange={(e) => {
+                                                            if (selectedProduct) {
+                                                                handleLocalUpdate({ ...selectedProduct, name: e.target.value });
+                                                            }
+                                                        }}
+                                                        placeholder="Nombre..."
+                                                    />
+                                                </div>
                                             </div>
-                                            <input
-                                                className="edit-input-title"
-                                                value={selectedProduct.name}
-                                                onChange={(e) => handleLocalUpdate({ ...selectedProduct, name: e.target.value })}
-                                                placeholder="Nombre del Producto"
-                                            />
 
                                             <div className="features-edit">
                                                 <h4>Características (una por línea)</h4>
                                                 <textarea
                                                     className="edit-input-features"
-                                                    value={selectedProduct.features.join('\n')}
-                                                    onChange={(e) => handleLocalUpdate({ ...selectedProduct, features: e.target.value.split('\n') })}
+                                                    value={selectedProduct.features?.join('\n') || ''}
+                                                    onChange={(e) => {
+                                                        if (selectedProduct) {
+                                                            handleLocalUpdate({ ...selectedProduct, features: e.target.value.split('\n') });
+                                                        }
+                                                    }}
                                                 />
                                             </div>
 
                                             <input
                                                 className="edit-input-wholesaler"
-                                                value={selectedProduct.wholesaler}
-                                                onChange={(e) => handleLocalUpdate({ ...selectedProduct, wholesaler: e.target.value })}
+                                                value={selectedProduct.wholesaler || ''}
+                                                onChange={(e) => {
+                                                    if (selectedProduct) {
+                                                        handleLocalUpdate({ ...selectedProduct, wholesaler: e.target.value });
+                                                    }
+                                                }}
                                                 placeholder="Nombre del Mayorista"
                                             />
 
-                                            <button className="delete-btn" onClick={() => handleDelete(selectedProduct.id)}>Eliminar Producto</button>
+                                            <button className="delete-btn" onClick={() => selectedProduct && handleDelete(selectedProduct.id)}>Eliminar Producto</button>
                                         </div>
                                     ) : (
                                         <>
@@ -598,43 +565,40 @@ export default function ProductCatalog({
                                                 </ul>
                                             </div>
 
-                                            <button className="btn-cotizar">Solicitar Cotización Personalizada</button>
+                                            <button style={{ background: '#00E5A0', color: 'black', border: 'none', padding: '20px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '2px', cursor: 'pointer', transition: 'all 0.4s', fontSize: '0.75rem', borderRadius: '2px', marginTop: 'auto', width: '100%' }}>Solicitar Cotización Personalizada</button>
                                         </>
                                     )}
                                 </div>
-                            </div>
 
-                            {/* Productos Relacionados al Ancho */}
+                            </div>{/* fin fila superior */}
+
+                            {/* FILA INFERIOR: Productos Relacionados — ancho completo */}
                             {!isEditing && products.filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id).length > 0 && (
-                                <div className="modal-footer-related">
-                                    <h4 className="related-header">Productos Relacionados</h4>
-                                    <div className="related-grid-full">
+                                <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.06)', background: '#060606', padding: '20px 32px' }}>
+                                    <h4 style={{ margin: '0 0 16px 0', fontSize: '0.6rem', fontWeight: 800, letterSpacing: '3px', textTransform: 'uppercase', color: '#444' }}>Productos Relacionados</h4>
+                                    <div style={{ display: 'flex', flexDirection: 'row', gap: '12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
                                         {products
                                             .filter(p => p.category === selectedProduct.category && p.id !== selectedProduct.id)
-                                            .slice(0, 4)
+                                            .slice(0, 8)
                                             .map(related => (
                                                 <div
                                                     key={related.id}
-                                                    className="related-card-footer"
-                                                    onClick={() => {
-                                                        setSelectedProduct(related);
-                                                        setActiveImage(related.image);
-                                                        const modalScroll = document.querySelector('.modal-content');
-                                                        if (modalScroll) modalScroll.scrollTop = 0;
-                                                    }}
+                                                    onClick={() => { setSelectedProduct(related); setActiveImage(related.image); }}
+                                                    style={{ flexShrink: 0, width: '110px', cursor: 'pointer', background: '#111', borderRadius: '2px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.04)', transition: 'border-color 0.3s' }}
+                                                    onMouseEnter={e => (e.currentTarget.style.borderColor = '#00E5A0')}
+                                                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.04)')}
                                                 >
-                                                    <div className="related-img-box">
-                                                        <img src={related.image} alt={related.name} />
+                                                    <div style={{ width: '110px', height: '90px', overflow: 'hidden', background: '#0a0a0a' }}>
+                                                        <img src={related.image} alt={related.name} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.85 }} />
                                                     </div>
-                                                    <span className="related-name-footer">
-                                                        {related.name}
-                                                    </span>
+                                                    <div style={{ padding: '6px 8px' }}>
+                                                        <span style={{ fontSize: '0.6rem', color: '#666', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{related.name}</span>
+                                                    </div>
                                                 </div>
                                             ))}
                                     </div>
                                 </div>
                             )}
-
                             <div style={{ position: 'absolute', right: '40px', top: '40px', display: 'flex', gap: '20px', zIndex: 100 }}>
                                 {adminMode && (
                                     <button className="action-btn" onClick={() => {
@@ -650,96 +614,50 @@ export default function ProductCatalog({
                                     <X />
                                 </button>
                             </div>
-                        </motion.div>
+                        </motion.div >
 
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                    </motion.div >
+                )
+                }
+            </AnimatePresence >
 
             <style jsx>{`
                 .catalog-wrapper {
-                    padding: 60px 0;
-                    background-color: #050505;
-                }
-                .catalog-header {
-                    text-align: center;
-                    margin-bottom: 40px;
-                }
-                .catalog-title {
-                    font-size: 4rem;
-                    margin-bottom: 10px;
-                    font-family: var(--font-heading);
-                    letter-spacing: 8px;
-                    color: white;
-                }
-                .catalog-subtitle {
-                    color: var(--text-muted);
-                    font-size: 0.9rem;
-                    max-width: 600px;
-                    margin: 0 auto;
-                    text-transform: uppercase;
-                    letter-spacing: 4px;
-                    font-family: var(--font-body);
-                }
-                .category-filter {
-                    display: flex;
-                    justify-content: center;
-                    gap: 15px;
-                    width: 100%;
-                    flex-wrap: wrap;
-                }
-                .filter-btn {
-                    background: none;
-                    border: 1px solid rgba(255,255,255,0.05);
-                    color: var(--text-muted);
-                    padding: 12px 28px;
-                    font-size: 0.8rem;
-                    text-transform: uppercase;
-                    letter-spacing: 2px;
-                    cursor: pointer;
-                    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                    border-radius: 2px;
-                    font-family: var(--font-body);
-                }
-                .filter-btn:hover, .filter-btn.active {
-                    color: var(--accent-turquoise);
-                    border-color: var(--accent-turquoise);
-                    background: rgba(0,212,189,0.05);
-                    transform: translateY(-2px);
-                }
-                .highlight {
-                    color: var(--accent-gold);
+                    padding: 80px 20px;
+                    background-color: #0A0A0A;
+                    min-height: 100vh;
+                    font-family: 'DM Sans', sans-serif;
                 }
                 .catalog-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-                    gap: 40px;
+                    grid-template-columns: repeat(48, 1fr);
+                    gap: 22px;
+                    max-width: 1440px;
+                    margin: 0 auto;
                 }
-                .product-card-premium {
-                    background: #0a0a0a;
+                .product-card-button {
+                    grid-column: span 12;
+                    background: #111;
                     border: 1px solid rgba(255,255,255,0.03);
                     border-radius: 4px;
                     overflow: hidden;
                     cursor: pointer;
-                    transition: all 0.5s cubic-bezier(0.165, 0.84, 0.44, 1);
+                    padding: 0;
+                    margin: 5px;
                     position: relative;
+                    transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+                    outline: none;
+                    text-align: left;
                 }
-                .product-card-premium::after {
-                    content: '';
-                    position: absolute;
-                    inset: 0;
-                    border: 1px solid rgba(212, 175, 55, 0);
-                    margin: 10px;
-                    pointer-events: none;
-                    transition: border-color 0.5s ease;
-                }
-                .product-card-premium:hover {
-                    border-color: rgba(255,255,255,0.1);
-                    transform: translateY(-10px);
-                    box-shadow: 0 30px 60px rgba(0,0,0,0.8);
-                }
-                .product-card-premium:hover::after {
-                    border-color: rgba(212, 175, 55, 0.2);
+                @media (max-width: 1200px) { .product-card-button { grid-column: span 16; } }
+                @media (max-width: 900px) { .product-card-button { grid-column: span 24; } }
+                @media (max-width: 600px) { .product-card-button { grid-column: span 48; } }
+
+                .product-card-button:hover {
+                    border-color: #00E5A0;
+                    transform: translateY(-12px);
+                    box-shadow: 0 40px 80px rgba(0,0,0,0.9);
+                    background: #151515;
                 }
                 .product-image-container {
                     position: relative;
@@ -751,100 +669,107 @@ export default function ProductCatalog({
                     width: 100%;
                     height: 100%;
                     object-fit: cover;
-                    transition: transform 1.2s cubic-bezier(0.23, 1, 0.32, 1);
-                    opacity: 0.85;
+                    transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+                    opacity: 0.8;
                 }
-                .product-card-premium:hover .product-img {
-                    transform: scale(1.1);
+                .product-card-button:hover .product-img {
+                    transform: scale(1.08);
                     opacity: 1;
                 }
                 .product-overlay {
                     position: absolute;
                     inset: 0;
-                    background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 60%);
+                    background: linear-gradient(to top, #0A0A0A 0%, transparent 60%);
                     display: flex;
                     justify-content: space-between;
                     align-items: flex-end;
-                    padding: 25px;
-                    opacity: 0.9;
+                    padding: 24px;
                 }
                 .product-category {
-                    color: var(--accent-gold);
-                    font-size: 0.65rem;
-                    font-weight: 700;
+                    color: #A0A0A0;
+                    font-size: 0.6rem;
+                    font-weight: 800;
                     text-transform: uppercase;
                     letter-spacing: 3px;
                     display: flex;
                     flex-direction: column;
-                    gap: 5px;
+                    gap: 8px;
                 }
                 .premium-badge {
-                    background: var(--accent-gold);
-                    color: black;
-                    padding: 4px 10px;
+                    background: #00E5A0;
+                    color: #000;
+                    padding: 4px 12px;
                     border-radius: 2px;
-                    font-size: 0.6rem;
-                    letter-spacing: 1px;
-                    width: fit-content;
-                }
-                .hero-visual {
-                    border: 1px solid rgba(212, 175, 55, 0.3);
-                    box-shadow: 0 0 30px rgba(212, 175, 55, 0.1);
+                    font-size: 0.55rem;
+                    font-weight: 900;
                 }
                 .info-icon {
-                    color: var(--accent-turquoise);
-                    width: 20px;
-                    opacity: 0.6;
+                    color: #00E5A0;
+                    width: 18px;
+                    opacity: 0.3;
                     transition: opacity 0.3s;
                 }
-                .product-card-premium:hover .info-icon {
+                .product-card-button:hover .info-icon {
                     opacity: 1;
                 }
                 .product-meta {
-                    padding: 15px 20px;
-                    text-align: center;
+                    padding: 20px 24px;
                 }
                 .product-meta h3 {
                     margin: 0;
-                    font-size: 1rem;
-                    color: white;
-                    font-family: var(--font-heading);
-                    letter-spacing: 1.5px;
+                    font-size: 0.85rem;
+                    color: #FFFFFF;
+                    font-family: 'Space Grotesk', sans-serif;
+                    letter-spacing: 2px;
                     text-transform: uppercase;
+                    line-height: 1.4;
                 }
-                .product-meta p {
-                    margin: 10px 0 0 0;
-                    font-size: 0.75rem;
-                    color: var(--text-muted);
-                    text-transform: uppercase;
-                    letter-spacing: 3px;
+                .product-meta-flex {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
                 }
+                .admin-actions {
+                    display: flex;
+                    gap: 12px;
+                }
+                .admin-btn {
+                    padding: 6px;
+                    border-radius: 4px;
+                    transition: all 0.3s;
+                    cursor: pointer;
+                }
+                .admin-btn.edit { color: #00E5A0; }
+                .admin-btn.delete { color: #ef4444; }
+                .admin-btn:hover { background: rgba(255,255,255,0.05); }
 
-
-
-                /* Modal */
+                /* Modal Luxury */
                 .modal-backdrop {
                     position: fixed;
                     inset: 0;
-                    background: rgba(0,0,0,0.99);
-                    backdrop-filter: blur(30px);
-                    z-index: 10000;
+                    background: rgba(8, 8, 8, 0.96);
+                    backdrop-filter: blur(16px);
+                    z-index: 100000;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    padding: 60px;
                 }
                 .modal-content {
-                    background: #000;
-                    width: 100%;
-                    max-width: 1360px;
-                    max-height: 75vh;
-                    height: auto;
-                    border-radius: 12px;
-                    overflow: hidden;
+                    background: #0A0A0A;
+                    width: 1200px;
+                    height: 450px;
+                    border-radius: 4px;
+                    overflow-x: hidden;
+                    overflow-y: auto;
                     position: relative;
                     border: 1px solid rgba(255,255,255,0.05);
-                    box-shadow: 0 50px 100px rgba(0,0,0,0.9);
+                    box-shadow: 0 80px 160px rgba(0,0,0,1);
+                    display: flex;
+                    flex-direction: column;
+                }
+                .modal-content::-webkit-scrollbar { display: none; }
+                .hero-visual {
+                    border-color: rgba(0, 229, 160, 0.3) !important;
                 }
                 .modal-actions {
                     position: absolute;
@@ -855,8 +780,8 @@ export default function ProductCatalog({
                     z-index: 100;
                 }
                 .action-btn {
-                    background: rgba(255,255,255,0.03);
-                    border: 1px solid rgba(255,255,255,0.1);
+                    background: rgba(255, 255, 255, 0.03);
+                    border: 1px solid rgba(255, 255, 255, 0.1);
                     color: white;
                     padding: 12px 24px;
                     font-size: 0.75rem;
@@ -868,11 +793,12 @@ export default function ProductCatalog({
                     gap: 12px;
                     transition: all 0.4s;
                     border-radius: 2px;
+                    font-family: 'Space Grotesk', sans-serif;
                 }
                 .action-btn:hover {
-                    background: var(--accent-turquoise);
+                    background: #00E5A0;
                     color: black;
-                    border-color: var(--accent-turquoise);
+                    border-color: #00E5A0;
                     transform: translateY(-2px);
                 }
                 .close-btn {
@@ -888,135 +814,132 @@ export default function ProductCatalog({
                 }
                 .modal-inner {
                     display: grid;
-                    grid-template-columns: 1.2fr 0.8fr;
-                    height: 100%;
-                    min-height: 80vh;
+                    grid-template-columns: 600px 600px;
+                    height: 450px;
+                    width: 1200px;
+                    overflow: hidden;
+                    flex-shrink: 0;
                 }
-                @media (max-width: 1024px) {
-                    .modal-inner {
-                        grid-template-columns: 1fr;
-                        overflow-y: auto;
-                    }
-                }
-                
                 .modal-image-stage {
                     position: relative;
                     background: #000;
-                    height: 100%;
+                    height: 450px;
+                    width: 600px;
                     display: flex;
                     flex-direction: column;
                     overflow: hidden;
                 }
                 .main-image-container {
+                    width: 100%;
                     flex: 1;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     position: relative;
-                    padding: 60px;
                     overflow: hidden;
+                    background: #050505;
                 }
                 .modal-hero-image {
-                    max-width: 50%;
-                    max-height: 50%;
+                    width: 100%;
+                    height: 100%;
                     object-fit: contain;
-                    filter: drop-shadow(0 40px 100px rgba(0,0,0,0.9));
+                    filter: drop-shadow(0 40px 100px rgba(0, 0, 0, 0.9));
                 }
                 .image-edit-overlay {
                     position: absolute;
                     inset: 0;
-                    background: rgba(0,212,189,0.05);
-                    border: 2px dashed var(--accent-turquoise);
+                    background: rgba(0, 229, 160, 0.05);
+                    border: 2px dashed #00E5A0;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     pointer-events: none;
                     z-index: 5;
                 }
-                
-                .modal-thumbnails-overlay {
-                    position: absolute;
-                    bottom: 40px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    z-index: 20;
-                    pointer-events: none;
-                }
-                .thumbnails-scroll {
+                .modal-thumbnails-panel {
+                    width: 100%;
+                    height: 174px;
+                    background: #0a0a0a;
+                    border-top: 1px solid rgba(255, 255, 255, 0.05);
+                    padding: 8px;
+                    overflow-x: auto;
+                    overflow-y: hidden;
                     display: flex;
-                    gap: 15px;
-                    padding: 15px 30px;
-                    background: rgba(15, 15, 15, 0.4);
-                    backdrop-filter: blur(40px);
-                    border-radius: 100px;
-                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    flex-direction: row;
+                    flex-shrink: 0;
                     pointer-events: auto;
-                    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+                    scrollbar-width: none;
+                }
+                .modal-thumbnails-panel::-webkit-scrollbar { display: none; }
+                .thumbnails-scroll {
+                    display: grid;
+                    grid-template-rows: repeat(2, 1fr);
+                    grid-auto-flow: column;
+                    grid-auto-columns: 75px;
+                    gap: 8px;
+                    height: 100%;
                 }
                 .thumbnail-item {
-                    width: 40px;
-                    height: 40px;
-                    border-radius: 6px;
+                    width: 75px;
+                    height: 75px;
+                    flex-shrink: 0;
                     overflow: hidden;
                     cursor: pointer;
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    opacity: 0.4;
-                    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-                    background: #111;
+                    border-radius: 2px;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    opacity: 0.6;
+                    transition: all 0.3s ease;
+                    background: #151515;
                 }
                 .thumbnail-item.active {
                     opacity: 1;
-                    border: 2px solid white;
-                    transform: scale(1.1);
+                    border: 1px solid #00E5A0;
+                    background: #1a1a1a;
                 }
                 .thumbnail-item img {
                     width: 100%;
                     height: 100%;
                     object-fit: cover;
                 }
-
                 .modal-text-col {
                     background: #080808;
-                    padding: 60px 50px;
-                    height: 100%;
-                    overflow-y: auto;
-                    border-left: 1px solid rgba(255,255,255,0.03);
+                    padding: 40px;
+                    height: 450px;
+                    overflow-y: scroll;
+                    border-left: 1px solid rgba(255, 255, 255, 0.03);
                     display: flex;
                     flex-direction: column;
+                    scrollbar-width: none;
                 }
+                .modal-text-col::-webkit-scrollbar { display: none; }
                 .modal-text-col h2 {
-                    font-size: 3.8rem;
+                    font-size: 1.8rem;
                     line-height: 1.1;
-                    margin-bottom: 40px;
+                    margin-bottom: 20px;
                     color: white;
-                    font-family: var(--font-heading);
-                    letter-spacing: -2px;
+                    font-family: 'Space Grotesk', sans-serif;
+                    letter-spacing: -1px;
                 }
-
                 .category-tag {
-                    color: var(--accent-gold);
-                    font-size: 0.8rem;
+                    color: #00E5A0;
+                    font-size: 0.75rem;
                     text-transform: uppercase;
                     letter-spacing: 5px;
-                    margin-bottom: 25px;
+                    margin-bottom: 12px;
                     display: block;
-                    font-weight: 700;
+                    font-weight: 800;
                 }
-                
                 .specs-container {
-                    margin-bottom: 60px;
-                    padding: 40px;
-                    background: rgba(255, 255, 255, 0.01);
-                    border: 1px solid rgba(255, 255, 255, 0.03);
-                    border-radius: 4px;
+                    margin-top: 20px;
+                    margin-bottom: 30px;
                 }
                 .specs-header {
-                    font-family: var(--font-heading);
+                    font-family: 'Space Grotesk', sans-serif;
                     text-transform: uppercase;
-                    font-size: 0.8rem;
-                    color: var(--accent-turquoise);
-                    margin-bottom: 30px;
-                    letter-spacing: 4px;
+                    font-size: 0.7rem;
+                    color: #555;
+                    margin-bottom: 15px;
+                    letter-spacing: 2px;
                 }
                 .specs-list {
                     list-style: none;
@@ -1026,167 +949,137 @@ export default function ProductCatalog({
                 .specs-list li {
                     display: flex;
                     align-items: flex-start;
-                    gap: 15px;
-                    color: #999;
-                    margin-bottom: 20px;
-                    font-size: 1rem;
-                    line-height: 1.6;
+                    gap: 12px;
+                    color: #888;
+                    margin-bottom: 12px;
+                    font-size: 0.9rem;
+                    line-height: 1.4;
                 }
                 .btn-cotizar {
-                    background: white;
+                    background: #00E5A0;
                     color: black;
                     border: none;
-                    padding: 25px;
+                    padding: 20px;
                     font-weight: 900;
                     text-transform: uppercase;
-                    letter-spacing: 4px;
+                    letter-spacing: 2px;
                     cursor: pointer;
-                    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-                    font-size: 0.85rem;
+                    transition: all 0.4s;
+                    font-size: 0.75rem;
+                    border-radius: 2px;
                 }
                 .btn-cotizar:hover {
-                    background: var(--accent-turquoise);
+                    background: white;
                     transform: translateY(-5px);
                 }
-
                 .modal-footer-related {
-                    padding: 60px 80px;
-                    background: rgba(255,255,255,0.01);
-                    border-top: 1px solid rgba(255,255,255,0.05);
+                    padding: 40px;
+                    background: #050505;
+                    border-top: 1px solid rgba(255,255,255,0.03);
                 }
                 .related-header {
-                    font-family: var(--font-heading);
+                    font-family: 'Space Grotesk', sans-serif;
+                    font-size: 0.7rem;
+                    color: #555;
                     text-transform: uppercase;
-                    font-size: 0.8rem;
-                    color: rgba(255,255,255,0.4);
-                    margin-bottom: 40px;
-                    letter-spacing: 4px;
+                    letter-spacing: 3px;
+                    margin-bottom: 24px;
                 }
                 .related-grid-full {
                     display: grid;
                     grid-template-columns: repeat(4, 1fr);
-                    gap: 30px;
+                    gap: 20px;
                 }
                 .related-card-footer {
                     cursor: pointer;
-                    transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+                    transition: all 0.3s;
                 }
                 .related-card-footer:hover {
-                    transform: translateY(-10px);
+                    transform: translateY(-5px);
                 }
                 .related-img-box {
                     aspect-ratio: 1/1;
+                    background: #000;
+                    border-radius: 2px;
                     overflow: hidden;
-                    border-radius: 4px;
-                    background: #050505;
+                    margin-bottom: 12px;
                     border: 1px solid rgba(255,255,255,0.05);
-                    margin-bottom: 15px;
                 }
                 .related-img-box img {
                     width: 100%;
                     height: 100%;
-                    object-fit: contain;
+                    object-fit: cover;
+                    opacity: 0.7;
+                    transition: opacity 0.3s;
+                }
+                .related-card-footer:hover .related-img-box img {
+                    opacity: 1;
                 }
                 .related-name-footer {
                     display: block;
-                    font-size: 0.75rem;
-                    color: #fff;
-                    opacity: 0.6;
+                    font-size: 0.65rem;
+                    color: #888;
                     text-transform: uppercase;
-                    letter-spacing: 2px;
-                    text-align: center;
+                    letter-spacing: 1px;
                 }
-
-                .wholesaler-info {
-                    margin-top: 80px;
-                    font-size: 0.8rem;
-                    color: #555;
-                    padding-top: 40px;
-                    border-top: 1px solid rgba(255,255,255,0.05);
-                    text-transform: uppercase;
-                    letter-spacing: 3px;
-                }
-                .btn-contact {
-                    margin-top: 50px;
-                    background: var(--accent-turquoise);
-                    color: black;
-                    border: none;
-                    padding: 22px 50px;
-                    font-weight: 800;
-                    text-transform: uppercase;
-                    letter-spacing: 4px;
-                    cursor: pointer;
-                    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                    font-size: 0.9rem;
-                    border-radius: 2px;
-                }
-                .btn-contact:hover {
-                    background: white;
-                    transform: translateY(-5px);
-                    box-shadow: 0 15px 40px rgba(0,212,189,0.3);
-                }
-
-                /* Edit Mode Styles */
                 .edit-form {
                     display: flex;
                     flex-direction: column;
                     gap: 20px;
                 }
-                .edit-input-category {
-                    background: rgba(255,255,255,0.02);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    color: var(--accent-gold);
-                    padding: 15px;
-                    letter-spacing: 4px;
+                .edit-grid-system {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 20px;
+                }
+                .edit-field-group label {
+                    display: block;
+                    font-size: 10px;
+                    color: #555;
+                    margin-bottom: 8px;
+                    font-weight: 800;
                     text-transform: uppercase;
-                    font-size: 0.9rem;
-                    outline: none;
+                    letter-spacing: 2px;
                 }
-                .edit-input-title {
-                    background: rgba(255,255,255,0.02);
-                    border: 1px solid rgba(255,255,255,0.1);
+                .edit-input-title-compact, .edit-input-category {
+                    width: 100%;
+                    background: #000;
+                    border: 1px solid #333;
                     color: white;
-                    font-size: 3rem;
-                    padding: 15px;
-                    font-family: var(--font-heading);
+                    padding: 12px;
+                    border-radius: 4px;
+                    font-size: 14px;
                     outline: none;
-                }
-                .edit-input-desc {
-                    background: rgba(255,255,255,0.02);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    color: #aaa;
-                    font-size: 1.1rem;
-                    padding: 15px;
-                    min-height: 150px;
-                    outline: none;
-                    line-height: 1.8;
                 }
                 .edit-input-features {
-                    background: rgba(255,255,255,0.02);
-                    border: 1px solid rgba(255,255,255,0.1);
+                    background: #000;
+                    border: 1px solid #333;
                     color: #ccc;
                     padding: 15px;
-                    min-height: 200px;
+                    min-height: 180px;
                     width: 100%;
                     outline: none;
-                    font-family: var(--font-body);
+                    font-family: 'DM Sans', sans-serif;
+                    line-height: 1.6;
                 }
                 .edit-input-wholesaler {
-                    background: rgba(255,255,255,0.02);
-                    border: 1px solid rgba(255,255,255,0.1);
-                    color: #777;
-                    padding: 15px;
-                    font-size: 0.9rem;
+                    background: #000;
+                    border: 1px solid #333;
+                    color: #888;
+                    padding: 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
                     outline: none;
                 }
                 .delete-btn {
-                    margin-top: 40px;
+                    margin-top: 20px;
                     background: rgba(239, 68, 68, 0.05);
                     color: #ef4444;
                     border: 1px solid rgba(239, 68, 68, 0.2);
                     padding: 15px;
                     cursor: pointer;
-                    font-size: 0.8rem;
+                    border-radius: 4px;
+                    font-size: 0.7rem;
                     text-transform: uppercase;
                     letter-spacing: 2px;
                     transition: all 0.3s;

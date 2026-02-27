@@ -603,10 +603,10 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 .eq('section', 'gallery')
                 .single();
 
-            if (error) throw error;
+            if (error && error.code !== 'PGRST116') throw error;
 
-            const content = data?.content || { sections: [] };
-            const currentSection = content.sections.find((s: any) => s.id === section || s.title1 === section);
+            const contentData = data?.content || { sections: [] };
+            const currentSection = contentData.sections?.find((s: any) => s.id === section || s.title1 === section);
             setGalleryImages(currentSection?.gallery || []);
         } catch (err) {
             console.error('Error fetching gallery section:', err);

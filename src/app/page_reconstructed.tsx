@@ -107,8 +107,8 @@ export default function Home() {
           <div className='visual-overlay' />
         </div>
         <div className='hero-content reveal'>
-          <h1 className='hero-title'>{content.hero.title}</h1>
-          <p className='hero-subtitle'>{content.hero.subtitle}</p>
+          <h1 className='hero-title'>{content.hero.title1}</h1>
+          <p className='hero-subtitle'>{content.hero.paragraph1}</p>
           <Link href='/catalogo' className='btn-turquoise'>{content.hero.cta_text}</Link>
         </div>
       </section>

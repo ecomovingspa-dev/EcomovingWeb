@@ -13,11 +13,10 @@ interface MediaImage {
     category?: string;
 }
 
-export default function MediaSidebar() {
+export default function MediaSidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
     const [marketingImages, setMarketingImages] = useState<MediaImage[]>([]);
     const [catalogImages, setCatalogImages] = useState<MediaImage[]>([]);
     const [loading, setLoading] = useState(true);
-    const [isOpen, setIsOpen] = useState(false);
     const [isHubOpen, setIsHubOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [activeTab, setActiveTab] = useState<'marketing' | 'catalog'>('marketing');
@@ -83,34 +82,33 @@ export default function MediaSidebar() {
 
     const fetchCatalogImages = async () => {
         try {
-            let dbProducts: { name?: string; category?: string; technical_specs?: { category?: string }; images?: string[]; image?: string }[] = [];
-            try {
-                const { data, error } = await supabase
-                    .from('agent_buffer')
-                    .select('*')
-                    .eq('status', 'approved');
-                if (!error && data) dbProducts = data;
-            } catch (e) {
-                console.error('Error fetching agent_buffer:', e);
-            }
+            // Consulta directa a la tabla unificada 'productos'
+            const { data: dbProducts, error } = await supabase
+                .from('productos')
+                .select('nombre, categoria, imagenes_galeria, imagen_principal')
+                .eq('status', 'approved');
+
+            if (error) throw error;
 
             const images: MediaImage[] = [];
 
-            dbProducts.forEach((p) => {
-                const productName = p.name || 'Producto';
-                const category = p.category || p.technical_specs?.category || 'Otros';
+            (dbProducts || []).forEach((p) => {
+                const productName = p.nombre || 'Producto';
+                const category = p.categoria || 'Otros';
 
-                if (p.images && Array.isArray(p.images) && p.images.length > 0) {
-                    images.push({
-                        name: productName,
-                        url: p.images[0],
-                        source: 'catalog',
-                        category: category
+                if (p.imagenes_galeria && Array.isArray(p.imagenes_galeria) && p.imagenes_galeria.length > 0) {
+                    p.imagenes_galeria.forEach(url => {
+                        images.push({
+                            name: productName,
+                            url: url,
+                            source: 'catalog',
+                            category: category
+                        });
                     });
-                } else if (p.image) {
+                } else if (p.imagen_principal) {
                     images.push({
                         name: productName,
-                        url: p.image,
+                        url: p.imagen_principal,
                         source: 'catalog',
                         category: category
                     });
@@ -120,7 +118,7 @@ export default function MediaSidebar() {
             const uniqueImages = Array.from(new Map(images.map(img => [img.url, img])).values());
             setCatalogImages(uniqueImages);
         } catch (error) {
-            console.error('Error fetching catalog images:', error);
+            console.error('Error fetching catalog images from unified table:', error);
         }
     };
 
@@ -188,7 +186,7 @@ export default function MediaSidebar() {
                                 BIBLIOTECA <span style={{ color: 'var(--accent-gold)' }}>IA</span>
                             </h3>
                             <button
-                                onClick={() => setIsOpen(false)}
+                                onClick={() => onClose()}
                                 style={{ padding: '8px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: '50%', color: '#666' }}
                             >
                                 <X style={{ width: '24px', height: '24px' }} />
