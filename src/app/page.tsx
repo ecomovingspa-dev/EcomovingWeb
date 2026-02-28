@@ -12,6 +12,7 @@ import VisualGallery from '@/components/VisualGallery';
 import SectionComposer from '@/components/SectionComposer';
 import ProjectLauncher from '@/components/ProjectLauncher';
 import ExportModal from '@/components/ExportModal';
+import PremiumCollection from '@/components/PremiumLanding/PremiumCollection';
 
 interface Project {
   id: string;
@@ -384,14 +385,15 @@ export default function Home() {
         </div>
       </section>
 
+      {/* --- PREMIUM COLLECTION (BENTO VIP) --- */}
+      <PremiumCollection />
+
       {/* --- INFINITE GRID CANVAS (24 COLUMNS) --- */}
       <section id="infinite-canvas" style={{
-        minHeight: '200vh',
+        minHeight: '100vh',
         background: '#0a0a0a',
         position: 'relative',
         padding: '0'
-        // El grid real se renderizará internamente en los bloques, 
-        // o este contenedor puede ser el wrapper principal grid-cols-24
       }}>
         {/* Visual Guide for 48 Cols (visible only in Design Mode) */}
         {designMode && (
@@ -453,31 +455,14 @@ export default function Home() {
               return (
                 <div style={{
                   gridColumn: '1 / -1',
-                  minHeight: '400px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: '1px dashed rgba(255,255,255,0.1)',
-                  marginTop: '100px',
-                  marginBottom: '100px'
-                }}>
-                  <div style={{ textAlign: 'center', color: '#333' }}>
-                    <Layout size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
-                    <h3 style={{ fontSize: '1.5rem', fontFamily: 'var(--font-heading)', color: '#555' }}>LIENZO INFINITO (24 COLUMNAS)</h3>
-                    <p>El contenido se estructurará aquí con total libertad.</p>
-                    <button onClick={() => setIsComposerOpen(true)} style={{ marginTop: '20px', background: '#00d4bd', color: '#000', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                      + AGREGAR PRIMER BLOQUE
-                    </button>
-                  </div>
-                </div>
+                  display: 'none' // Lo ocultamos para darle prioridad al Premium Collection
+                }} />
               );
             }
           })()}
 
         </div>
       </section>
-
 
       {/* --- FOOTER --- */}
       <footer style={{ padding: '80px 0', textAlign: 'center', borderTop: '1px solid #111', background: '#000' }}>
