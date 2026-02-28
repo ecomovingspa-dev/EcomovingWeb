@@ -94,7 +94,7 @@ export default function Home() {
         <div className='nav-brand'>ECOMOVING</div>
         <div className='nav-links'>
           <button className='nav-btn-special' onClick={() => setIsCatalogHubOpen(true)}><Layout size={18} /> HUB</button>
-          <button className='nav-btn-special' onClick={() => setIsBibliotecaOpen(true)}><ImageIcon size={18} /> IA</button>
+          <button className='nav-btn-special' onClick={() => setIsBibliotecaOpen(true)}><ImageIcon size={18} /> BIBLIOTECA</button>
           <button className='nav-btn-special' onClick={() => setIsEditorSEOOpen(true)}><FileText size={18} /> SEO</button>
           <button className='nav-btn-special' onClick={() => setShowGridLabels(!showGridLabels)}><Crop size={18} /> Rejas</button>
         </div>

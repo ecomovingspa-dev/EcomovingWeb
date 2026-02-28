@@ -340,7 +340,7 @@ export default function Home() {
           </button>
 
           <button onClick={() => setIsCatalogHubOpen(true)} className='nav-btn'><Layout size={16} /> HUB</button>
-          <button onClick={() => setIsBibliotecaOpen(true)} className='nav-btn'><ImageIcon size={16} /> IA</button>
+          <button onClick={() => setIsBibliotecaOpen(true)} className='nav-btn'><ImageIcon size={16} /> BIBLIOTECA</button>
           <button onClick={() => setIsComposerOpen(true)} className='nav-btn'><Layers size={16} /> COMPOSER</button>
           <button onClick={() => setIsEditorSEOOpen(true)} className='nav-btn'><FileText size={16} /> SEO</button>
 

@@ -2,13 +2,13 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Image as ImageIcon, X, Search, Loader2, Package, ChevronDown, Grid } from 'lucide-react';
+import { Image as ImageIcon, X, Search, Loader2, Package, ChevronDown, Grid, Sparkles } from 'lucide-react';
 import { motion, useDragControls } from 'framer-motion';
 
 interface MediaImage {
     name: string;
     url: string;
-    source: 'marketing' | 'catalog' | 'grilla';
+    source: 'marketing' | 'catalog' | 'grilla' | 'premium';
     category?: string;
 }
 
@@ -21,9 +21,10 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
     const [marketingImages, setMarketingImages] = useState<MediaImage[]>([]);
     const [catalogImages, setCatalogImages] = useState<MediaImage[]>([]);
     const [grillaImages, setGrillaImages] = useState<MediaImage[]>([]);
+    const [premiumImages, setPremiumImages] = useState<MediaImage[]>([]);
 
     // UI States
-    const [activeTab, setActiveTab] = useState<'grilla' | 'marketing' | 'catalog'>('grilla');
+    const [activeTab, setActiveTab] = useState<'premium' | 'catalog' | 'grilla' | 'marketing'>('premium');
     const [loadingMarketing, setLoadingMarketing] = useState(false);
     const [loadingCatalog, setLoadingCatalog] = useState(false);
     const [loadingGrilla, setLoadingGrilla] = useState(false);
@@ -81,24 +82,36 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
             // Carga desde 'productos' (Catálogo oficial publicados y unificados)
             const { data: prodData } = await supabase
                 .from('productos')
-                .select('nombre, imagen_principal, imagenes_galeria, categoria')
+                .select('nombre, imagen_principal, imagenes_galeria, categoria, is_premium')
                 .limit(2000);
 
             if (prodData && prodData.length > 0) {
-                const images: MediaImage[] = prodData.flatMap(p => {
+                const catalogList: MediaImage[] = [];
+                const premiumList: MediaImage[] = [];
+
+                prodData.forEach(p => {
                     const validImgs = [p.imagen_principal, ...(p.imagenes_galeria || [])].filter(Boolean);
                     let cat = (p.categoria || 'OTROS').trim().toUpperCase();
 
-                    return validImgs.map(url => ({
-                        name: p.nombre || 'Producto',
-                        url: url,
-                        source: 'catalog' as const,
-                        category: cat
-                    }));
+                    validImgs.forEach(url => {
+                        const img = {
+                            name: p.nombre || 'Producto',
+                            url: url,
+                            source: 'catalog' as const,
+                            category: cat
+                        };
+                        catalogList.push(img);
+                        if (p.is_premium) {
+                            premiumList.push({ ...img, source: 'premium' as const });
+                        }
+                    });
                 });
 
-                const unique = Array.from(new Map(images.map(i => [i.url, i])).values());
-                setCatalogImages(unique);
+                const uniqueCatalog = Array.from(new Map(catalogList.map(i => [i.url, i])).values());
+                const uniquePremium = Array.from(new Map(premiumList.map(i => [i.url, i])).values());
+
+                setCatalogImages(uniqueCatalog);
+                setPremiumImages(uniquePremium);
             }
         } catch (e) {
             console.error("Error fetching unified catalog for AI Library:", e);
@@ -142,7 +155,7 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
     // Effects
     useEffect(() => {
         if (activeTab === 'marketing') fetchMarketing();
-        else if (activeTab === 'catalog') fetchCatalog();
+        else if (activeTab === 'catalog' || activeTab === 'premium') fetchCatalog();
         else if (activeTab === 'grilla') fetchGrilla();
     }, [activeTab]);
 
@@ -151,15 +164,15 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
     // Filters
     const categories = useMemo(() => {
         if (activeTab === 'marketing') return [];
-        let list = activeTab === 'grilla' ? grillaImages : catalogImages;
+        let list = activeTab === 'grilla' ? grillaImages : (activeTab === 'premium' ? premiumImages : catalogImages);
         const cats = new Set(list.map(img => img.category).filter(Boolean));
         return ['Todas', ...Array.from(cats)].sort() as string[];
-    }, [catalogImages, grillaImages, activeTab]);
+    }, [catalogImages, grillaImages, premiumImages, activeTab]);
 
     const currentImages = useMemo(() => {
-        let list = activeTab === 'marketing' ? marketingImages : (activeTab === 'grilla' ? grillaImages : catalogImages);
+        let list = activeTab === 'marketing' ? marketingImages : (activeTab === 'grilla' ? grillaImages : (activeTab === 'premium' ? premiumImages : catalogImages));
 
-        if ((activeTab === 'catalog' || activeTab === 'grilla') && selectedCategory !== 'Todas') {
+        if ((activeTab === 'catalog' || activeTab === 'grilla' || activeTab === 'premium') && selectedCategory !== 'Todas') {
             list = list.filter(img => img.category === selectedCategory);
         }
 
@@ -167,7 +180,7 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
             list = list.filter(img => img.name.toLowerCase().includes(search.toLowerCase()));
         }
         return list;
-    }, [activeTab, marketingImages, catalogImages, grillaImages, search, selectedCategory]);
+    }, [activeTab, marketingImages, catalogImages, grillaImages, premiumImages, search, selectedCategory]);
 
     const loading = activeTab === 'marketing' ? loadingMarketing : (activeTab === 'grilla' ? loadingGrilla : loadingCatalog);
 
@@ -227,7 +240,7 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
                         letterSpacing: '3px',
                         textTransform: 'uppercase'
                     }}>
-                        BIBLIOTECA <span style={{ color: 'var(--eco-accent-secondary)', opacity: 0.8 }}>IA</span>
+                        BIBLIOTECA
                     </h3>
                 </div>
                 <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#666', padding: '4px', transition: 'color 0.3s' }} className="hover-text-white">
@@ -237,7 +250,7 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
 
             {/* Tabs */}
             <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.2)' }}>
-                {['grilla', 'catalog', 'marketing'].map(tab => (
+                {['premium', 'catalog', 'grilla', 'marketing'].map(tab => (
                     <button key={tab}
                         onClick={() => setActiveTab(tab as any)}
                         style={{
@@ -252,7 +265,8 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
                     >
                         {tab === 'marketing' ? <><ImageIcon size={14} /> MARKETING</> :
                             tab === 'catalog' ? <><Package size={14} /> CATÁLOGO</> :
-                                <><Grid size={14} /> GRILLA</>}
+                                tab === 'premium' ? <><Sparkles size={14} /> PREMIUM</> :
+                                    <><Grid size={14} /> GRILLA</>}
                     </button>
                 ))}
             </div>
@@ -271,8 +285,8 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
                     </div>
                 </div>
 
-                {/* Categories (Only Catalog) */}
-                {activeTab === 'catalog' && !loading && categories.length > 1 && (
+                {/* Categories (Catalog & Premium) */}
+                {(activeTab === 'catalog' || activeTab === 'premium') && !loading && categories.length > 1 && (
                     <div style={{ padding: '0 16px 16px 16px', display: 'flex', gap: '8px', overflowX: 'auto', whiteSpace: 'nowrap' }} className="custom-scroll">
                         {categories.map(cat => (
                             <button
@@ -312,6 +326,7 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
                                     >
                                         <img src={img.url} alt={img.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => (e.target as HTMLImageElement).style.display = 'none'} />
                                         {activeTab === 'catalog' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-gold)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>PRODUCT</span>}
+                                        {activeTab === 'premium' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-gold)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>PREMIUM</span>}
                                         {activeTab === 'grilla' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-turquoise)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>GRILLA</span>}
                                     </div>
                                 ))}
