@@ -1138,14 +1138,24 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         }
         setIsSearchingSku(true);
         try {
-            // Búsqueda directa por sku_externo (case-insensitive) o por nombre
-            const { data: results } = await supabase
+            // Query 1: búsqueda directa por sku_externo (case-insensitive)
+            const { data: bySkuData } = await supabase
                 .from('productos')
                 .select('nombre, sku_externo, caracteristicas, features')
-                .or(`sku_externo.ilike.${skuClean},nombre.ilike.%${skuClean}%`)
+                .ilike('sku_externo', skuClean)
                 .limit(1);
 
-            const found = results && results.length > 0 ? results[0] : null;
+            let found = bySkuData && bySkuData.length > 0 ? bySkuData[0] : null;
+
+            // Query 2: fallback por nombre si no encontró por SKU
+            if (!found) {
+                const { data: byNameData } = await supabase
+                    .from('productos')
+                    .select('nombre, sku_externo, caracteristicas, features')
+                    .ilike('nombre', `%${skuClean}%`)
+                    .limit(1);
+                found = byNameData && byNameData.length > 0 ? byNameData[0] : null;
+            }
 
             if (!found) {
                 setMarketingProductContext(null);
@@ -1182,14 +1192,16 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         setIsGeneratingAI(true);
         setAiStatus('⚡ Consultando base de datos...');
         try {
-            // PRIMARY INPUT: columna `caracteristicas` desde Supabase por SKU exacto
-            const { data, error } = await supabase
+            // PRIMARY INPUT: columna `caracteristicas` desde Supabase — ilike para ser case-insensitive
+            const { data: skuResults } = await supabase
                 .from('productos')
                 .select('nombre, sku_externo, caracteristicas, features')
-                .eq('sku_externo', skuClean)
-                .single();
+                .ilike('sku_externo', skuClean)
+                .limit(1);
 
-            if (error || !data) {
+            const data = skuResults && skuResults.length > 0 ? skuResults[0] : null;
+
+            if (!data) {
                 throw new Error(`[FATAL_ERROR: DATA_SOURCE_EMPTY] — SKU "${skuClean}" no encontrado en la base de datos`);
             }
 
