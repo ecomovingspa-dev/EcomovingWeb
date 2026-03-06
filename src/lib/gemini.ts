@@ -26,23 +26,23 @@ export const getMarketingHTMLTemplate = (subject: string, p1: string, p2: string
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;700;900&display=swap');
         body { margin: 0; padding: 0; background-color: #f9f9f9; font-family: 'Outfit', sans-serif; color: #1a1a1a; }
         .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border: 1px solid #eeeeee; border-radius: 8px; overflow: hidden; box-shadow: 0 40px 80px rgba(0,0,0,0.05); }
-        .hero { padding: 80px 50px 40px; text-align: center; background: #ffffff; position: relative; }
-        .logo { width: 160px; height: auto; margin-bottom: 45px; display: block; margin: 0 auto; }
-        .content { padding: 40px 50px 80px; }
-        .h1 { font-size: 44px; font-weight: 900; line-height: 1.1; margin-bottom: 35px; letter-spacing: -2px; color: #000000; text-transform: uppercase; text-align: center; }
-        .p { font-size: 19px; line-height: 1.8; color: #444444; font-weight: 300; margin-bottom: 50px; text-align: justify; }
-        .img-box { margin: 50px 0; background: #ffffff; border: 1px solid #f0f0f0; line-height: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.02); text-align: center; }
-        .img-box img { width: 100%; max-width: 600px; height: auto; border-radius: 4px; display: block; margin: 0 auto; }
-        .footer { padding: 50px; background: #fafafa; text-align: center; border-top: 1px solid #f0f0f0; }
+        .hero { padding: 40px 50px 30px; text-align: center; background: #ffffff; }
+        .logo { width: 150px; height: auto; display: block; margin: 0 auto; }
+        .content { padding: 0 50px 60px; }
+        .h1 { font-size: 35px; font-weight: 900; line-height: 1.15; margin-bottom: 24px; letter-spacing: -1px; color: #000000; text-transform: uppercase; text-align: center; }
+        .p { font-size: 17px; line-height: 1.6; color: #333333; font-weight: 300; margin-bottom: 36px; text-align: left; max-height: 6.4em; overflow: hidden; }
+        .img-box { margin: 0 0 40px; background: #ffffff; border: 1px solid #f0f0f0; line-height: 0; text-align: center; border-radius: 4px; overflow: hidden; }
+        .img-box img { width: 100%; max-width: 600px; height: auto; display: block; margin: 0 auto; }
+        .footer { padding: 36px 50px; background: #fafafa; text-align: center; border-top: 1px solid #f0f0f0; }
         .f-text { font-size: 10px; color: #999999; letter-spacing: 4px; text-transform: uppercase; font-weight: 700; }
     </style>
 </head>
 <body>
     <div class="wrapper">
-        <div class="header" style="padding: 60px 50px 0; text-align: center;">
-            <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving" class="logo" width="160" />
+        <div style="padding: 40px 50px 0; text-align: center;">
+            <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving" class="logo" width="150" />
         </div>
-        <div class="hero" style="padding: 40px 50px 40px; text-align: center;">
+        <div class="hero">
             <div class="h1">${p1}</div>
         </div>
         <div class="content">
@@ -52,7 +52,7 @@ export const getMarketingHTMLTemplate = (subject: string, p1: string, p2: string
             </div>
         </div>
         <div class="footer">
-            <div class="f-text">&copy; 2026 ECOMOVING SPA &bull; SANTIAGO &bull; DUBAI &bull; MILÁN</div>
+            <div class="f-text">&copy; 2026 ECOMOVING SPA &bull; SANTIAGO</div>
         </div>
     </div>
 </body>
@@ -101,9 +101,9 @@ REGLAS DE ORO (@seo_mkt — sin excepciones):
 5. PROHIBIDO EL RELLENO: Si los datos técnicos no permiten construir una afirmación, simplemente no la hagas.
 
 ESTRUCTURA DE SALIDA REQUERIDA (responde SOLO esto, sin texto adicional):
-SUBJECT: [Asunto de email de ultra-lujo — máx 10 palabras, tono ejecutivo]
-PART1: [Titular poético y potente — máx 8 palabras, sin nombre de producto]
-PART2: [Narrativa B2B de 2 párrafos cortos. Párrafo 1: el problema que resuelve. Párrafo 2: la superioridad técnica del producto como solución. Sin listas, sin bullets.]
+SUBJECT: [Asunto de email — MÁX 4 PALABRAS, tono ejecutivo, genera urgencia o exclusividad]
+PART1: [Titular potente — máx 6 palabras, uppercase, sin nombre de producto]
+PART2: [EXACTAMENTE 4 frases cortas. Cada frase en una línea separada. CRITERIO: extraer las 4 características MÁS BUSCADAS del producto según el PRIMARY INPUT (priorizar: temperatura, material, capacidad, sostenibilidad, diseño). Cada frase máx 12 palabras. Tono ejecutivo. Sin bullets ni numeración. Sin mencionar nombres de marca.]
 `;
 
     const maxRetries = 5;
