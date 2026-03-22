@@ -6,10 +6,10 @@
 
 :root {
   /* Fondo (Dark Luxury) */
-  --eco-bg-primary: #0A0A0A;
-  --eco-bg-secondary: #111111;
-  --eco-bg-subtle: #1A1A1A;
-  --eco-bg-glass: rgba(10, 10, 10, 0.72);
+  --eco-bg-primary: #000000;
+  --eco-bg-secondary: #0A0A0A;
+  --eco-bg-subtle: #111111;
+  --eco-bg-glass: rgba(0, 0, 0, 0.72);
 
   /* Acento (Emerald/Cyan) */
   --eco-accent-primary: #00E5A0;
