@@ -4,6 +4,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
 import { useWebContent } from '@/hooks/useWebContent';
 import PeekCarousel from '@/components/PeekCarousel';
+import Link from 'next/link';
+import WhatsAppButton from '@/components/WhatsAppButton';
 
 const BentoBlock = ({ block, previewMode }: {
   block: any,
@@ -66,8 +68,21 @@ const BentoBlock = ({ block, previewMode }: {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{
-        gridColumn: `span ${spanW}`,
-        gridRow: `span ${spanH}`,
+        gridColumn: `var(--final-col) / span var(--final-span-w)`,
+        gridRow: `var(--final-row) / span var(--final-span-h)`,
+        // CSS Variables for responsive power
+        '--final-col': finalCol,
+        '--final-row': finalRow,
+        '--final-span-w': spanW,
+        '--final-span-h': spanH,
+        '--t-col': block.tCol || block.col || 1,
+        '--t-row': block.tRow || block.row || 1,
+        '--t-span-w': tSpanW,
+        '--t-span-h': tSpanH,
+        '--m-col': block.mCol || 1,
+        '--m-row': block.mRow || 1,
+        '--m-span-w': mSpanW,
+        '--m-span-h': mSpanH,
         position: 'relative',
         borderRadius: block.isCircle ? '50%' : (block.borderRadius || '16px'),
         backgroundColor: block.bgColor || 'rgba(255,255,255,0.03)',
@@ -75,14 +90,7 @@ const BentoBlock = ({ block, previewMode }: {
         border: block.borderWidth ? `${block.borderWidth} solid ${block.borderColor || 'rgba(255,255,255,0.1)'}` : 'none',
         boxShadow: shadowStyles[block.shadow as keyof typeof shadowStyles] || shadowStyles.none,
         aspectRatio: aspectRatio,
-        '--m-col': block.mCol || 1,
-        '--m-row': block.mRow || 1,
-        '--m-span-w': mSpanW,
-        '--m-span-h': mSpanH,
-        '--t-col': block.tCol || block.col || 1,
-        '--t-row': block.tRow || block.row || 1,
-        '--t-span-w': tSpanW,
-        '--t-span-h': tSpanH,
+        margin: '4px', // Sincronizado con Studio
       } as any}
       className="bento-block-mobile"
     >
@@ -334,19 +342,25 @@ export default function Home() {
               {(heroContent as any).paragraph1}
             </motion.p>
           )}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
+            <Link href={(heroContent as any).cta_link || '/catalogo'} className='cta-luxury' style={{ display: 'inline-block', padding: '15px 40px', background: 'var(--eco-accent-primary)', color: '#000', fontWeight: 900, borderRadius: '2px', letterSpacing: '2px', textDecoration: 'none', boxShadow: '0 0 20px rgba(0,212,189,0.4)' }}>
+              {(heroContent as any).cta_text || 'EXPLORAR CATÁLOGO'}
+            </Link>
+          </motion.div>
         </div>
       </section>
 
-      <section style={{ position: 'relative', zIndex: 5, padding: '100px 20px', backgroundColor: masterSection?.bgColor || 'transparent' }}>
+      <section style={{ position: 'relative', zIndex: 5, padding: '0', backgroundColor: masterSection?.bgColor || 'transparent' }}>
         <div 
           className="bento-grid-mobile"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(48, 1fr)',
-            gridAutoRows: 'minmax(20px, auto)',
-            gap: '20px',
-            maxWidth: '2400px',
-            margin: '0 auto'
+            gridAutoRows: 'var(--eco-grid-row-size, 15px)', // Variable para control dinámico
+            gap: '0px', // Gap 0 para permitir que el margin de 4px de los bloques actúe como espaciado controlado
+            maxWidth: '100%',
+            margin: '0 auto',
+            padding: '20px' // Padding de seguridad para el lienzo
           }}
         >
           {masterSection?.blocks?.map((block: any, idx: number) => (
@@ -359,26 +373,63 @@ export default function Home() {
         </div>
       </section>
 
-      <style jsx>{`
+      <style jsx global>{`
         @media (max-width: 768px) {
           .bento-grid-mobile {
             grid-template-columns: repeat(48, 1fr) !important;
-            gap: 15px !important;
+            gap: 0px !important; /* Mantenemos gap 0 para precisión */
           }
           .bento-block-mobile {
-            grid-column: var(--m-col) / span var(--m-span-w) !important;
-            grid-row: var(--m-row) / span var(--m-span-h) !important;
+            grid-column: var(--final-col) / span var(--final-span-w) !important;
+            grid-row: var(--final-row) / span var(--final-span-h) !important;
             aspect-ratio: auto !important;
-            min-height: 200px;
           }
         }
+
+        /* RESPONSIVE INDEPENDENCE ENGINE */
         @media (min-width: 769px) and (max-width: 1024px) {
-          .bento-block-mobile {
-            grid-column: var(--t-col) / span var(--t-span-w) !important;
-            grid-row: var(--t-row) / span var(--t-span-h) !important;
-          }
+           .bento-block-mobile { 
+              --final-col: var(--t-col) !important;
+              --final-row: var(--t-row) !important;
+              --final-span-w: var(--t-span-w) !important;
+              --final-span-h: var(--t-span-h) !important;
+           }
+        }
+        @media (max-width: 768px) {
+           .bento-block-mobile { 
+              --final-col: var(--m-col) !important;
+              --final-row: var(--m-row) !important;
+              --final-span-w: var(--m-span-w) !important;
+              --final-span-h: var(--m-span-h) !important;
+           }
         }
       `}</style>
+
+      {/* --- FOOTER --- */}
+      <footer style={{ padding: '80px 0', textAlign: 'center', borderTop: '1px solid #111', background: '#000', position: 'relative', zIndex: 10 }}>
+        <div style={{ marginBottom: '30px' }}>
+          <img 
+            src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" 
+            alt="Ecomoving Logo" 
+            style={{ maxHeight: '60px', width: 'auto', filter: 'brightness(1.2)' }} 
+          />
+        </div>
+        
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', marginBottom: '40px', flexWrap: 'wrap' }}>
+            <a href="https://wa.me/56979587293" style={{ color: 'var(--eco-accent-primary)', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600, letterSpacing: '2px', fontFamily: 'var(--eco-font-heading)' }}>
+                WHATSAPP +56 9 7958 7293
+            </a>
+            <span style={{ color: '#333' }}>|</span>
+            <span style={{ color: 'white', fontSize: '0.9rem', fontWeight: 600, letterSpacing: '2px', fontFamily: 'var(--eco-font-heading)' }}>
+                SANTIAGO, CHILE
+            </span>
+        </div>
+
+        <div style={{ fontSize: '0.8rem', color: '#555', letterSpacing: '4px', marginBottom: '30px', textTransform: 'uppercase' }}>CHILE &bull; SUSTENTABILIDAD &bull; DISEÑO PREMIUM</div>
+        <div style={{ fontSize: '0.7rem', color: '#222' }}>© 2026 ECOMOVING SpA. TODOS LOS DERECHOS RESERVADOS</div>
+      </footer>
+
+      <WhatsAppButton phone="+56979587293" />
     </main>
   );
 }
