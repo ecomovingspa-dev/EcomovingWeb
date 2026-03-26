@@ -420,7 +420,11 @@ export default function Home() {
                 WHATSAPP +56 9 7958 7293
             </a>
             <span style={{ color: '#333' }}>|</span>
-            <span style={{ color: 'white', fontSize: '0.9rem', fontWeight: 600, letterSpacing: '2px', fontFamily: 'var(--eco-font-heading)' }}>
+            <a href="mailto:ventas@ecomoving.cl" style={{ color: 'white', textDecoration: 'none', fontSize: '0.9rem', fontWeight: 600, letterSpacing: '2px', fontFamily: 'var(--eco-font-heading)' }}>
+                VENTAS@ECOMOVING.CL
+            </a>
+            <span style={{ color: '#333' }}>|</span>
+            <span style={{ color: 'white', opacity: 0.6, fontSize: '0.9rem', fontWeight: 600, letterSpacing: '2px', fontFamily: 'var(--eco-font-heading)' }}>
                 SANTIAGO, CHILE
             </span>
         </div>
