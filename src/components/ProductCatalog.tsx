@@ -29,7 +29,7 @@ export default function ProductCatalog({
     const [isEditing, setIsEditing] = useState(false);
     const [filter, setFilter] = useState('Todos');
     const [isExpandingCategories, setIsExpandingCategories] = useState(false);
-    const [specialCategories, setSpecialCategories] = useState(['ECOLOGICOS', 'BOTELLAS, MUG Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS']);
+    const [specialCategories, setSpecialCategories] = useState(['01. HIDRATACIÓN', '02. ESPACIO DE TRABAJO', '03. MOVIMIENTO URBANO', '04. TECH INNOVATION', '05. GOURMET EXPERIENCE']);
 
     useEffect(() => {
         // Cargar productos aprobados desde Supabase
@@ -64,15 +64,13 @@ export default function ProductCatalog({
                 setProducts(formattedProducts);
 
                 // Actualizar categorías dinámicamente desde los productos
-                const existingCats = new Set(['ECOLOGICOS', 'BOTELLAS, MUG Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS']);
+                const existingCats = new Set(['01. HIDRATACIÓN', '02. ESPACIO DE TRABAJO', '03. MOVIMIENTO URBANO', '04. TECH INNOVATION', '05. GOURMET EXPERIENCE']);
                 formattedProducts.forEach(p => {
                     if (p.category && p.category !== 'Otros') {
                         existingCats.add(p.category.toUpperCase());
                     }
                 });
                 setSpecialCategories(Array.from(existingCats).sort());
-                // Si la tabla productos está vacía, no hay fallback estático
-                setProducts([]);
             }
         } catch (error) {
             console.error('Error fetching products from unified table:', error);
@@ -80,7 +78,7 @@ export default function ProductCatalog({
         }
     };
 
-    const categoriesList = ['ECOLOGICOS', 'BOTELLAS, MUG Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS'];
+    const categoriesList = ['01. HIDRATACIÓN', '02. ESPACIO DE TRABAJO', '03. MOVIMIENTO URBANO', '04. TECH INNOVATION', '05. GOURMET EXPERIENCE'];
     const filteredProducts = products.filter(p => {
         const pCat = (p.category || '').toUpperCase();
         const fCat = filter.toUpperCase().trim();
@@ -96,14 +94,14 @@ export default function ProductCatalog({
             return matchesPremium && matchesSearch;
         }
 
-        // Mapeo inteligente para retrocompatibilidad
+        // Mapeo inteligente para retrocompatibilidad y regularización (Catálogo Vivo 2026)
         const categoryMap: Record<string, string[]> = {
-            'ECOLOGICOS': ['ECOLOGICOS', 'ECO', 'MADERA', 'CORCHO'],
-            'BOTELLAS, MUG Y TAZAS': ['BOTELLAS', 'MUG', 'TAZAS', 'BOTELLA', 'TAZA', 'VASO', 'TERMO'],
-            'CUADERNOS, LIBRETAS Y MEMO SET': ['CUADERNOS', 'LIBRETAS', 'MEMO', 'LIBRETA', 'CUADERNO', 'NOTAS'],
-            'MOCHILAS, BOLSOS Y MORRALES': ['MOCHILAS', 'BOLSOS', 'MORRALES', 'MOCHILA', 'BOLSO', 'MORRAL', 'MALETIN', 'CARPETA'],
-            'BOLÍGRAFOS': ['BOLÍGRAFOS', 'BOLIGRAFO', 'LAPIZ', 'BOLIGRAFOS'],
-            'ACCESORIOS': ['ACCESORIOS', 'RELOJ', 'TECNOLOGIA', 'LLAVERO', 'HERRAMIENTAS']
+            '01. HIDRATACIÓN': ['HIDRATACIÓN', 'HIDRATACION', 'BOTELLAS', 'MUG', 'TAZAS', 'TERMO'],
+            '02. ESPACIO DE TRABAJO': ['ESPACIO DE TRABAJO', 'TRABAJO', 'OFICINA', 'LIBRETAS', 'CUADERNOS', 'BOLÍGRAFOS', 'BOLIGRAFOS', 'LAPIZ'],
+            '03. MOVIMIENTO URBANO': ['MOVIMIENTO URBANO', 'URBANO', 'MOCHILAS', 'BOLSOS', 'MORRALES'],
+            '04. TECH INNOVATION': ['TECH INNOVATION', 'TECH', 'TECNOLOGIA', 'ECOLOGICOS', 'ECO'],
+            '05. GOURMET EXPERIENCE': ['GOURMET EXPERIENCE', 'GOURMET', 'HOGAR', 'TIEMPO LIBRE', 'TABLAS'],
+            'ACCESORIOS': ['ACCESORIOS', 'RELOJ', 'LLAVERO', 'HERRAMIENTAS']
         };
 
         const alias = categoryMap[fCat] || [fCat];
