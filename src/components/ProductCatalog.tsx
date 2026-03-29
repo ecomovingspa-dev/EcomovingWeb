@@ -71,15 +71,12 @@ export default function ProductCatalog({
                     }
                 });
                 setSpecialCategories(Array.from(existingCats).sort());
-            } else {
-                // Si la tabla productos está vacía, fallback a catalog.json estático
-                const catalogData = await import('../data/catalog.json');
-                setProducts(catalogData.default);
+                // Si la tabla productos está vacía, no hay fallback estático
+                setProducts([]);
             }
         } catch (error) {
             console.error('Error fetching products from unified table:', error);
-            const catalogData = await import('../data/catalog.json');
-            setProducts(catalogData.default);
+            setProducts([]);
         }
     };
 
@@ -182,7 +179,7 @@ export default function ProductCatalog({
         const isSupabaseProduct = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
         if (!isSupabaseProduct) {
-            alert('Este producto es parte del catálogo base estático y no puede eliminarse de la base de datos.');
+            alert('Atención: Solo se pueden eliminar productos que residen en la base de datos de Supabase.');
             return;
         }
 

@@ -8,6 +8,8 @@ export interface MarketingContent {
     part1: string;
     part2: string;
     html: string;
+    ctaLink?: string;
+    ctaText?: string;
 }
 
 export interface WebSectionContent {
@@ -17,63 +19,129 @@ export interface WebSectionContent {
     paragraph2: string;
 }
 
-export const getMarketingHTMLTemplate = (subject: string, p1: string, p2: string) => `
+export const getMarketingHTMLTemplate = (subject: string, p1: string, p2: string, ctaLink: string = "https://www.ecomoving.cl", ctaText: string = "EXPLORAR PORTAFOLIO") => `
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
+    <!--[if mso]>
+    <style type="text/css">
+        body, table, td, a { font-family: Arial, Helvetica, sans-serif !important; }
+    </style>
+    <![endif]-->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;700;900&display=swap');
-        body { margin: 0; padding: 0; background-color: #f9f9f9; font-family: 'Outfit', sans-serif; color: #1a1a1a; }
-        .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border: 1px solid #eeeeee; border-radius: 8px; overflow: hidden; box-shadow: 0 40px 80px rgba(0,0,0,0.05); }
-        .hero { padding: 40px 50px 30px; text-align: center; background: #ffffff; }
-        .logo { width: 150px; height: auto; display: block; margin: 0 auto; }
-        .content { padding: 0 50px 60px; }
-        .h1 { font-size: 35px; font-weight: 900; line-height: 1.15; margin-bottom: 24px; letter-spacing: -1px; color: #000000; text-transform: uppercase; text-align: center; }
-        .p { font-size: 17px; line-height: 1.6; color: #333333; font-weight: 300; margin-bottom: 36px; text-align: left; max-height: 6.4em; overflow: hidden; }
-        .img-box { margin: 0 0 40px; background: #ffffff; border: 1px solid #f0f0f0; line-height: 0; text-align: center; border-radius: 4px; overflow: hidden; }
-        .img-box img { width: 100%; max-width: 600px; height: auto; display: block; margin: 0 auto; }
-        .footer { padding: 36px 50px; background: #fafafa; text-align: center; border-top: 1px solid #f0f0f0; }
-        .f-text { font-size: 10px; color: #999999; letter-spacing: 4px; text-transform: uppercase; font-weight: 700; }
+        body { margin: 0; padding: 0; background-color: #f9f9f9; font-family: 'Outfit', sans-serif; color: #1a1a1a; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse !important; }
+        img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; display: block; }
+        .wrapper { width: 100%; table-layout: fixed; background-color: #f9f9f9; padding-top: 40px; padding-bottom: 40px; }
+        .main-container { width: 900px; max-width: 900px; background-color: #ffffff; border: 1px solid #eeeeee; border-radius: 8px; margin: 0 auto; }
+        .h1 { font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; line-height: 1.2; margin: 0; letter-spacing: 2px; color: #000000; text-transform: uppercase; }
+        .p { font-family: 'Outfit', sans-serif; font-size: 19px; line-height: 1.6; color: #333333; font-weight: 300; margin: 0; }
+        .f-text { font-family: 'Outfit', sans-serif; font-size: 15px; color: #999999; letter-spacing: 2px; text-transform: uppercase; font-weight: 700; line-height: 2; }
+        .f-contact { font-family: 'Outfit', sans-serif; font-size: 15px; color: #666666; font-weight: 300; line-height: 1.8; }
     </style>
 </head>
-<body>
-    <div class="wrapper">
-        <div style="padding: 40px 50px 0; text-align: center;">
-            <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving" class="logo" width="150" />
-        </div>
-        <div class="hero">
-            <div class="h1">${p1}</div>
-        </div>
-        <div class="content">
-            <div class="p">${p2}</div>
-            <div class="img-box">
-                <img src="IMAGE_URL_PLACEHOLDER" alt="Ecomoving Premium" />
-            </div>
-        </div>
-        <div class="footer">
-            <div class="f-text">&copy; 2026 ECOMOVING SPA &bull; SANTIAGO</div>
-        </div>
-    </div>
+<body style="margin:0; padding:0;">
+    <center class="wrapper">
+        <table width="900" border="0" cellpadding="0" cellspacing="0" class="main-container" style="background-color: #ffffff; border: 1px solid #eeeeee; border-radius: 8px;">
+            <!-- Spacer Top -->
+            <tr><td height="50" style="font-size:1px; line-height:1px;">&nbsp;</td></tr>
+            
+            <!-- Logo Section -->
+            <tr>
+                <td align="center">
+                    <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving" width="250" style="width: 250px; display: block;" />
+                </td>
+            </tr>
+            
+            <!-- Spacer Logo to Title -->
+            <tr><td height="50" style="font-size:1px; line-height:1px;">&nbsp;</td></tr>
+            
+            <!-- Title Section -->
+            <tr>
+                <td align="center" style="padding: 0 50px;">
+                    <h1 class="h1">${p1}</h1>
+                </td>
+            </tr>
+            
+            <!-- Spacer Title to Image (50px exact) -->
+            <tr><td height="50" style="font-size:1px; line-height:1px;">&nbsp;</td></tr>
+            
+            <!-- Image Section (Fila 3 - 650px) -->
+            <tr>
+                <td align="center">
+                    <table width="650" border="0" cellpadding="0" cellspacing="0">
+                        <tr>
+                            <td align="center">
+                                <img src="IMAGE_URL_PLACEHOLDER" alt="Ecomoving Showcase" width="650" style="width: 650px; display: block; border-radius: 4px;" />
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            
+            <!-- Spacer Image to Copy -->
+            <tr><td height="50" style="font-size:1px; line-height:1px;">&nbsp;</td></tr>
+            
+            <!-- Copy Section -->
+            <tr>
+                <td align="center" style="padding: 0 80px;">
+                    <p class="p">${p2}</p>
+                </td>
+            </tr>
+            
+            <!-- Spacer Copy to Button -->
+            <tr><td height="50" style="font-size:1px; line-height:1px;">&nbsp;</td></tr>
+            
+            <!-- Button Section (Fondo Negro Sólido) -->
+            <tr>
+                <td align="center">
+                    <table border="0" cellpadding="0" cellspacing="0" style="background-color: #000000; border-radius: 0;">
+                        <tr>
+                            <td align="center" style="padding: 12px 40px;">
+                                <a href="${ctaLink}" target="_blank" style="font-family: 'Outfit', sans-serif; font-size: 15px; line-height: 25px; color: #ffffff; text-decoration: none; font-weight: 900; text-transform: uppercase; letter-spacing: 3px; display: block;">
+                                    ${ctaText}
+                                </a>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            
+            <!-- Spacer Button to Footer -->
+            <tr><td height="50" style="font-size:1px; line-height:1px;">&nbsp;</td></tr>
+            
+            <!-- Footer Section -->
+            <tr>
+                <td align="center" style="padding: 50px; background-color: #fafafa; border-top: 1px solid #f0f0f0;">
+                    <div class="f-text">ECOMOVING SPA &bull; SANTIAGO, CHILE</div>
+                    <div style="height: 20px; line-height: 20px; border-top: 1px solid #eeeeee; margin-top: 20px; padding-top: 20px;">
+                        <span class="f-contact">ventas@ecomoving.cl &nbsp;&bull;&nbsp; +56 9 7958 7293 &nbsp;&bull;&nbsp; +56 9 3924 6386</span>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </center>
 </body>
 </html>`.trim();
 
+
+
+
 export const generateMarketingAI = async (
     imageSource: string,
-    context: string = ""
+    context: string = "",
+    ctaLink: string = "https://www.ecomoving.cl",
+    ctaText: string = "EXPLORAR PORTAFOLIO"
 ): Promise<MarketingContent> => {
     if (!genAI) throw new Error("API KEY MISSING");
 
     // PROTOCOLO @seo_mkt: Usamos gemini-2.0-flash (disponible y estable en este entorno)
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    // PROTOCOLO @seo_mkt — Logic Gate: PRIMARY INPUT = CARACTERISTICAS_TECNICAS
-    // El contexto siempre llega con el prefijo "CARACTERISTICAS_TECNICAS:" desde el Hub.
-    // Si el contexto no existe o no tiene datos reales, se emite DATA_SOURCE_EMPTY.
-    if (!context || !context.includes('CARACTERISTICAS_TECNICAS:') || context.replace('CARACTERISTICAS_TECNICAS:', '').trim() === '') {
-        console.error("[SEO_MKT] Logic Gate activado: PRIMARY INPUT vacío o inválido.");
-        throw new Error("[FATAL_ERROR: DATA_SOURCE_EMPTY]");
-    }
+    // PROTOCOLO @seo_mkt — Logic Gate: MULTIMODAL FALLBACK
+    const isLifestyle = !context || !context.includes('CARACTERISTICAS_TECNICAS:') || context.replace('CARACTERISTICAS_TECNICAS:', '').trim() === '';
 
     const responseImg = await fetch(imageSource);
     const blob = await responseImg.blob();
@@ -85,33 +153,38 @@ export const generateMarketingAI = async (
 
     const prompt = `
 Eres el Módulo de Inteligencia Semántica (@seo_mkt) de Ecomoving SpA.
-Protocolo ADN activo. Fidelidad absoluta a los datos técnicos.
+Protocolo ADN activo. Fidelidad estratégica a la identidad premium de la marca.
 
-PRIMARY INPUT — ÚNICA FUENTE DE VERDAD:
-${context}
+${isLifestyle ? 
+`MODO CREATIVO VISUAL ACTIVADO:
+No se han proporcionado características técnicas. 
+TAREA: Analiza la composición de la imagen (lifestyle/colección). Detecta los productos presentes (mochilas, botellas, accesorios), los materiales (bambú, madera, metal mate) y el ecosistema visual.
+Genera una narrativa de "Colección Premium" o "Ecosistema de Trabajo Eco-pro" basada únicamente en la visión.` 
+: 
+`PRIMARY INPUT — ÚNICA FUENTE DE VERDAD:
+${context}`
+}
 
-IMAGEN DEL PRODUCTO: Analiza la imagen para detectar forma, acabado, color y uso implícito. 
-Si hay discrepancia entre la imagen y las specs, la imagen tiene prioridad sobre la forma; las specs tienen prioridad sobre el contenido técnico.
+IMAGEN DEL PRODUCTO/COLECCIÓN: Analiza la imagen para detectar forma, acabado, color y uso implícito. 
+${isLifestyle ? 'Crea una propuesta de valor corporativa de alto impacto combinando todos los elementos visibles.' : 'Si hay discrepancia entre la imagen y las specs, la imagen tiene prioridad sobre la forma; las specs tienen prioridad sobre el contenido técnico.'}
 
 REGLAS DE ORO (@seo_mkt — sin excepciones):
-1. PROHIBICIÓN ABSOLUTA DE NOMBRES: Nunca menciones nombres de marca, modelos o SKUs (ej. "SILLY", "YAMA", "W35"). Refiérete por categoría o esencia ("Este aliado de hidratación", "La pieza", "El instrumento").
-2. FIDELIDAD TÉCNICA: Solo usa materiales, certificaciones e impactos presentes en el PRIMARY INPUT. Prohibido inventar.
+1. PROHIBICIÓN ABSOLUTA DE NOMBRES: Nunca menciones nombres de marca, modelos o SKUs. Refiérete por categoría o esencia ("Este aliado de hidratación", "La pieza", "La colección", "El ecosistema corporativo").
+2. FIDELIDAD TÉCNICA: ${isLifestyle ? 'Básate en lo que se ve (madera, textil, metal, corcho).' : 'Solo usa materiales, certificaciones e impactos presentes en el PRIMARY INPUT. Prohibido inventar.'}
 3. TONO "CIERRE DE NEGOCIO": Directo, ejecutivo, sofisticado. Nunca informal ni entusiasta ("¡Te va a encantar!").
 4. NARRATIVA RÍTMICA: Estilo Comercial de TV. Frases cortas, ritmo, alto impacto psicológico para el decisor B2B.
-5. PROHIBIDO EL RELLENO: Si los datos técnicos no permiten construir una afirmación, simplemente no la hagas.
+5. PROHIBIDO EL RELLENO: Si no puedes construir una afirmación basada en la visión o los datos, simplemente no la hagas.
 
 ESTRUCTURA DE SALIDA REQUERIDA (responde SOLO esto, sin texto adicional, sin emojis, sin asteriscos):
 SUBJECT: [MÁX 4 PALABRAS. Si generas más de 4 palabras, el sistema rechazará tu respuesta.]
 PART1: [MÁX 6 PALABRAS en mayúsculas. Sin nombre de producto.]
-PART2: [EXACTAMENTE 4 frases. Una frase por línea. Sin bullets (•-*), sin números, sin guiones. Cada frase máx 12 palabras. Priorizar en este orden: 1° temperatura/rendimiento, 2° materiales, 3° capacidad/dimensiones, 4° sostenibilidad/diseño.]
+PART2: [MÁXIMO 1 PÁRRAFO FLUIDO Y ARMÓNICO. Sin bullets (•-*), sin números, sin itemizados. Estilo Comercial de TV.]
 
 EJEMPLO DE SALIDA IDEAL (usa este como modelo exacto de formato):
 SUBJECT: Tecnología que transforma
-PART1: PRECISIÓN TÉRMICA SIN CÓMPROMISO
-PART2: Mantiene bebidas frías 24 horas y calientes 12.
-Aislamiento al vacío con doble pared de acero inoxidable.
-Capacidad 600 ml, base antideslizante, tapa sellada.
-Acero reciclado: eficiencia y responsabilidad empresarial.
+PART1: PRECISIÓN TÉRMICA SIN COMPROMISO
+PART2: Esta solución avanzada mantiene la temperatura ideal durante jornadas extensas, combinando aislamiento de doble pared en acero inoxidable con un diseño ergonómico de alta capacidad. Su sello hermético y base antideslizante garantizan rendimiento superior, mientras su material reciclado refuerza el compromiso ambiental de su organización.
+
 `;
 
     // --- BLINDAJE NIVEL 2: Sanitizador de salida post-generación ---
@@ -133,28 +206,15 @@ Acero reciclado: eficiencia y responsabilidad empresarial.
             .join(' ')
             .toUpperCase();
 
-        // PART2: exactamente 4 frases, sin bullets
+        // PART2: párrafo fluido, sin bullets
         const cleanPart2 = part2
             .replace(/^[\s\u2022\-*’‘\d\.]+/gm, '') // quitar bullets/números al inicio de línea
             .replace(/[*#]/g, '')                         // quitar asteriscos y hashes
+            .replace(/\s+/g, ' ')                        // Normalizar espacios
             .trim();
 
-        // Separar por salto de línea o por punto+espacio
-        const sentences = cleanPart2
-            .split(/\n+/)
-            .map(s => s.trim())
-            .filter(s => s.length > 4);
+        const sanitizedPart2 = cleanPart2;
 
-        // Si no hay 4 líneas, intentar separar por oración
-        const finalSentences = sentences.length >= 4
-            ? sentences.slice(0, 4)
-            : cleanPart2
-                .split(/(?<=[.!?])\s+/)
-                .map(s => s.trim())
-                .filter(s => s.length > 4)
-                .slice(0, 4);
-
-        const sanitizedPart2 = finalSentences.join('\n');
 
         return { subject: sanitizedSubject, part1: sanitizedPart1, part2: sanitizedPart2 };
     };
@@ -190,7 +250,9 @@ Acero reciclado: eficiencia y responsabilidad empresarial.
                 subject: s,
                 part1: p1s,
                 part2: p2s,
-                html: getMarketingHTMLTemplate(s, p1s, p2s)
+                html: getMarketingHTMLTemplate(s, p1s, p2s, ctaLink, ctaText),
+                ctaLink,
+                ctaText
             };
         } catch (error: any) {
             lastError = error;

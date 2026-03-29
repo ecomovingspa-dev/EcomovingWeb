@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Search, Trash2, Download, Layers, Loader2, Save, Image as ImageIcon, Check, Star, RefreshCw, Plus, Sparkles, Send, Globe, RotateCw, FlipHorizontal, Maximize2, Minimize2, Square, RectangleHorizontal, RectangleVertical, ChevronRight, Cloud, FolderOpen } from 'lucide-react';
+import { X, Search, Trash2, Download, Layers, Loader2, Save, Image as ImageIcon, Check, Star, RefreshCw, Plus, Sparkles, Send, Globe, RotateCw, FlipHorizontal, Maximize2, Minimize2, Square, RectangleHorizontal, RectangleVertical, ChevronRight, Cloud, FolderOpen, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { generateMarketingAI, generateWebAI, generateSEOFilenameAI, MarketingContent, WebSectionContent, getMarketingHTMLTemplate } from '@/lib/gemini';
 import { useWebContent } from '@/hooks/useWebContent';
@@ -86,9 +86,9 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         offsetY: 0
     });
     const [isRoutingInsumo, setIsRoutingInsumo] = useState(false);
-    const [insumoSource, setInsumoSource] = useState<'local' | 'drive'>('local');
-    const [driveSource, setDriveSource] = useState<'google' | 'local'>('google');
-    const [driveFolderId, setDriveFolderId] = useState('1Cf7jz-1Ufhewjxib2dKw_9PsOhWNSzp4');
+    const [insumoSource, setInsumoSource] = useState<'local' | 'cloud'>('local');
+    const [driveSource, setDriveSource] = useState<'supabase' | 'local'>('supabase');
+    const [cloudPath, setCloudPath] = useState('');
     const [driveItems, setDriveItems] = useState<DriveItem[]>([]);
     const [driveNavigationStack, setDriveNavigationStack] = useState<string[]>([]);
     const [isFetchingDrive, setIsFetchingDrive] = useState(false);
@@ -137,19 +137,19 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         }
     }, [content.sections, selectedGallerySection]);
 
-    // Persistencia de Folder ID de Drive y Carga Automática
+    // Persistencia de Ruta de Supabase y Carga Automática
     useEffect(() => {
-        const savedFolderId = localStorage.getItem('ecomoving_drive_folder_id');
-        if (savedFolderId) {
-            setDriveFolderId(savedFolderId);
+        const savedPath = localStorage.getItem('ecomoving_cloud_path');
+        if (savedPath) {
+            setCloudPath(savedPath);
         }
     }, []);
 
     useEffect(() => {
-        if (driveFolderId) {
-            localStorage.setItem('ecomoving_drive_folder_id', driveFolderId);
+        if (cloudPath !== undefined) {
+            localStorage.setItem('ecomoving_cloud_path', cloudPath);
         }
-    }, [driveFolderId]);
+    }, [cloudPath]);
 
     useEffect(() => {
         if (!selectedProduct) {
@@ -332,20 +332,51 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         });
     };
 
-    const handleDriveFetch = async (targetFolderId?: string) => {
-        const idToFetch = targetFolderId || (driveSource === 'local' ? 'C:\\Users\\Mario\\Desktop' : driveFolderId);
-        if (!idToFetch.trim()) return;
-
+    const handleCloudFetch = async (targetPath?: string) => {
+        const currentPath = targetPath !== undefined ? targetPath : cloudPath;
+        
         setIsFetchingDrive(true);
         try {
-            const apiEndpoint = driveSource === 'local' ? `/api/local-folder?path=${encodeURIComponent(idToFetch)}` : `/api/drive-folder?folderId=${idToFetch}`;
-            const response = await fetch(apiEndpoint);
-            const data = await response.json();
+            if (driveSource === 'local') {
+                const idToFetch = currentPath || 'C:\\Users\\Mario\\Desktop';
+                const apiEndpoint = `/api/local-folder?path=${encodeURIComponent(idToFetch)}`;
+                const response = await fetch(apiEndpoint);
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+                setDriveItems(data.items || []);
+            } else {
+                // Supabase Storage Fetch
+                const { data, error } = await supabase.storage
+                    .from('imagenes-marketing')
+                    .list(currentPath, {
+                        limit: 100,
+                        offset: 0,
+                        sortBy: { column: 'name', order: 'asc' }
+                    });
 
-            if (data.error) throw new Error(data.error);
-            setDriveItems(data.items || []);
+                if (error) throw error;
+
+                const items: DriveItem[] = (data || []).map(f => {
+                    const isFolder = !f.id; // En .list(), carpetas no tienen ID
+                    let thumbnail = null;
+                    if (!isFolder) {
+                        const { data: { publicUrl } } = supabase.storage
+                            .from('imagenes-marketing')
+                            .getPublicUrl(currentPath ? `${currentPath}/${f.name}` : f.name);
+                        thumbnail = publicUrl;
+                    }
+
+                    return {
+                        id: currentPath ? `${currentPath}/${f.name}` : f.name,
+                        name: f.name,
+                        type: isFolder ? 'folder' : 'file',
+                        thumbnail: thumbnail
+                    };
+                });
+                setDriveItems(items);
+            }
         } catch (err: any) {
-            console.error('Error fetching drive/local items:', err);
+            console.error('Error fetching cloud items:', err);
             alert('Error al acceder al origen: ' + err.message);
         } finally {
             setIsFetchingDrive(false);
@@ -353,28 +384,93 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     };
 
     const handleDriveNavigate = (id: string) => {
-        setDriveNavigationStack(prev => [...prev, driveSource === 'local' ? (driveItems[0]?.id.split('\\').slice(0, -1).join('\\')) || 'C:\\Users\\Mario\\Desktop' : driveFolderId]);
-        if (driveSource !== 'local') setDriveFolderId(id);
-        handleDriveFetch(id);
+        setDriveNavigationStack(prev => [...prev, cloudPath]);
+        setCloudPath(id);
+        handleCloudFetch(id);
     };
 
     const handleDriveBack = () => {
         if (driveNavigationStack.length === 0) return;
         const newStack = [...driveNavigationStack];
-        const parentId = newStack.pop()!;
+        const parentPath = newStack.pop()!;
         setDriveNavigationStack(newStack);
-        setDriveFolderId(parentId);
-        handleDriveFetch(parentId);
+        setCloudPath(parentPath);
+        handleCloudFetch(parentPath);
+    };
+
+    const handleDeleteCloudItem = async (e: React.MouseEvent, item: DriveItem) => {
+        e.stopPropagation();
+        if (driveSource === 'local') {
+            alert('La eliminación de archivos locales no está permitida desde el Hub @constructor');
+            return;
+        }
+
+        if (!confirm(`¿Estás seguro de que quieres eliminar "${item.name}"? Esta acción no se puede deshacer.`)) return;
+
+        setIsFetchingDrive(true);
+        try {
+            console.log('🗑 Intentando eliminar:', item.id);
+            let pathsToDelete: string[] = [];
+
+            if (item.type === 'folder') {
+                // Supabase Storage: Listar recursivamente o por prefijo? .list no es recursivo
+                // Vamos a intentar obtener los archivos de este nivel al menos
+                const { data: files, error: listError } = await supabase.storage
+                    .from('imagenes-marketing')
+                    .list(item.id, { limit: 1000 });
+                
+                if (listError) throw listError;
+                if (files && files.length > 0) {
+                    pathsToDelete = files.map(f => `${item.id}/${f.name}`);
+                } else {
+                    // Si está vacía o es un placeholder
+                    pathsToDelete = [item.id];
+                }
+            } else {
+                pathsToDelete = [item.id];
+            }
+
+            console.log('🗑 Rutas finales a eliminar de Supabase:', pathsToDelete);
+            
+            const { data, error } = await supabase.storage
+                .from('imagenes-marketing')
+                .remove(pathsToDelete);
+
+            if (error) {
+                console.error('[DELETE_ERROR]', error);
+                throw error;
+            }
+
+            if (data && data.length > 0) {
+                alert(`¡Eliminado con éxito! (${data.length} archivo/s)`);
+            } else {
+                console.warn('Supabase no devolvió confirmación de eliminación de archivos:', data);
+                // A veces Supabase no devuelve error pero tampoco confirma si el archivo no existía
+                alert('La operación finalizó. Verifica si el archivo desapareció.');
+            }
+            
+            // Forzar recarga de la lista
+            handleCloudFetch(cloudPath);
+        } catch (err: any) {
+            console.error('Error crítico eliminando de Supabase:', err);
+            alert(`Error al eliminar: ${err.message || 'Sin detalles'}`);
+        } finally {
+            setIsFetchingDrive(false);
+        }
     };
 
     const handleSelectDriveImage = async (url: string) => {
         setLoading(true);
         try {
-            // Si es local, la URL ya apunta a /api/local-asset, si es drive pasa por el proxy
-            const finalUrl = driveSource === 'local' ? url : `/api/drive-proxy?url=${encodeURIComponent(url)}`;
+            // BUG FIX: Anteriormente forzaba el uso de drive-proxy para todo lo no-local.
+            // Ahora, si es Supabase, usamos la URL directa para evitar errores 500 del proxy de Google.
+            const finalUrl = (driveSource === 'local' || driveSource === 'supabase') ? url : `/api/drive-proxy?url=${encodeURIComponent(url)}`;
+            
             const response = await fetch(finalUrl);
             if (!response.ok) {
-                console.error('Error al obtener la imagen:', response.statusText);
+                const errorText = await response.text().catch(() => response.statusText);
+                console.error('Error al obtener la imagen:', errorText);
+                alert(`Error al cargar la imagen seleccionada (${response.status}): ${errorText}`);
                 setLoading(false);
                 return;
             }
@@ -477,8 +573,18 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                     const localUrl = URL.createObjectURL(blob);
                     // @seo_mkt: Imagen EXCLUSIVA del tab Marketing — no contamina Hero ni Grilla
                     setMarketingImage(localUrl);
+                    
+                    // Inicializar estado para permitir Alternativa B (Manual) inmediatamente
+                    setGeneratedMarketing({
+                        subject: '',
+                        part1: '',
+                        part2: '',
+                        html: getMarketingHTMLTemplate('', '', '')
+                    });
+                    
                     setActiveImage(null); // Asegurar que Hero/Grilla no la vean
                     // Limpiar insumo
+
                     insumoPreviews.forEach(url => URL.revokeObjectURL(url));
                     setInsumoFile(null);
                     setInsumoFiles([]);
@@ -1233,47 +1339,48 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         }
 
         const skuClean = marketingSkuInput.trim().toUpperCase();
-        if (!skuClean) {
-            alert('Ingresa el SKU del producto para generar contenido de marketing');
-            return;
-        }
-
         setIsGeneratingAI(true);
-        setAiStatus('⚡ Consultando base de datos...');
+        
         try {
-            // PRIMARY INPUT: columna `features` desde Supabase — ilike con wildcard
-            const { data: skuResults } = await supabase
-                .from('productos')
-                .select('nombre, sku_externo, features')
-                .ilike('sku_externo', `%${skuClean}%`)
-                .limit(1);
+            let specs: string[] = [];
+            let ctaLink = "https://www.ecomoving.cl";
+            let ctaText = "EXPLORAR PORTAFOLIO";
 
-            const data = skuResults && skuResults.length > 0 ? skuResults[0] : null;
+            if (skuClean) {
+                setAiStatus('⚡ Consultando base de datos...');
+                // PRIMARY INPUT: columna `features` desde Supabase
+                const { data: skuResults } = await supabase
+                    .from('productos')
+                    .select('nombre, sku_externo, features')
+                    .ilike('sku_externo', `%${skuClean}%`)
+                    .limit(1);
 
-            if (!data) {
-                throw new Error(`[FATAL_ERROR: DATA_SOURCE_EMPTY] — SKU "${skuClean}" no encontrado en la base de datos`);
+                const data = skuResults && skuResults.length > 0 ? skuResults[0] : null;
+
+                if (data) {
+                    specs = Array.isArray(data.features)
+                        ? data.features.filter((s: any) => typeof s === 'string' && s.trim())
+                        : typeof data.features === 'string' && data.features.trim()
+                            ? [data.features]
+                            : [];
+                    setMarketingProductContext({ nombre: data.nombre, caracteristicas: specs });
+                    ctaLink = `https://www.ecomoving.cl/catalogo?search=${skuClean}`;
+                    ctaText = "VER DETALLES TÉCNICOS";
+                } else {
+                    console.warn(`[SEO_MKT] SKU "${skuClean}" no encontrado. Entrando en MODO CREATIVO VISUAL.`);
+                    setMarketingProductContext(null);
+                }
+            } else {
+                setAiStatus('👁️ Activando MODO VISIÓN AGENTE...');
+                setMarketingProductContext(null);
             }
-
-            // La columna de specs en Supabase es `features`
-            const specs: string[] = Array.isArray(data.features)
-                ? data.features.filter((s: any) => typeof s === 'string' && s.trim())
-                : typeof data.features === 'string' && data.features.trim()
-                    ? [data.features]
-                    : [];
-
-            if (specs.length === 0) {
-                throw new Error(`[FATAL_ERROR: DATA_SOURCE_EMPTY] — El producto "${data.nombre}" no tiene características técnicas cargadas`);
-            }
-
-            // Actualizar el contexto de producto encontrado en UI
-            setMarketingProductContext({ nombre: data.nombre, caracteristicas: specs });
 
             setAiStatus('🧠 Procesando con @seo_mkt...');
-            const context = `CARACTERISTICAS_TECNICAS:\n${specs.join('\n')}`;
-            const content = await generateMarketingAI(marketingImage, context);
+            const context = specs.length > 0 ? `CARACTERISTICAS_TECNICAS:\n${specs.join('\n')}` : '';
+            const content = await generateMarketingAI(marketingImage, context, ctaLink, ctaText);
 
             setGeneratedMarketing(content);
-            setAiStatus('✨ Contenido generado con éxito');
+            setAiStatus(skuClean ? '✨ Contenido generado con éxito' : '🎨 Fábrica en MODO CREATIVO');
         } catch (err: any) {
             console.error("[SEO_MKT] Error crítico:", err);
             setAiStatus('❌ ' + (err.message || 'Error'));
@@ -1287,8 +1394,14 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     const handleMarketingChange = (field: keyof MarketingContent, value: string) => {
         if (!generatedMarketing) return;
         const updated = { ...generatedMarketing, [field]: value };
-        // Sincronizamos el HTML automíticamente al editar texto
-        updated.html = getMarketingHTMLTemplate(updated.subject, updated.part1, updated.part2);
+        // Sincronizamos el HTML automíticamente al editar texto, preservando los links dinámicos
+        updated.html = getMarketingHTMLTemplate(
+            updated.subject, 
+            updated.part1, 
+            updated.part2, 
+            updated.ctaLink, 
+            updated.ctaText
+        );
         setGeneratedMarketing(updated);
     };
 
@@ -1648,11 +1761,14 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                         <Cloud size={12} /> LOCAL
                                                     </button>
                                                     <button
-                                                        onClick={() => setInsumoSource('drive')}
-                                                        style={{ padding: '8px 20px', borderRadius: '4px', border: '1px solid', borderColor: insumoSource === 'drive' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)', backgroundColor: insumoSource === 'drive' ? 'rgba(212,175,55,0.1)' : 'transparent', color: insumoSource === 'drive' ? 'var(--accent-gold)' : '#555', fontSize: '10px', fontWeight: '900', cursor: 'pointer', transition: 'all 0.3s', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                                        onClick={() => {
+                                                            setInsumoSource('cloud');
+                                                            if (driveItems.length === 0) handleCloudFetch('');
+                                                        }}
+                                                        style={{ padding: '8px 20px', borderRadius: '4px', border: '1px solid', borderColor: insumoSource === 'cloud' ? 'var(--accent-gold)' : 'rgba(255,255,255,0.05)', backgroundColor: insumoSource === 'cloud' ? 'rgba(212,175,55,0.1)' : 'transparent', color: insumoSource === 'cloud' ? 'var(--accent-gold)' : '#555', fontSize: '10px', fontWeight: '900', cursor: 'pointer', transition: 'all 0.3s', display: 'flex', alignItems: 'center', gap: '8px' }}
                                                     >
-                                                        <Star size={12} fill={insumoSource === 'drive' ? 'var(--accent-gold)' : 'none'} />
-                                                        DRIVE ECOMOVING
+                                                        <Star size={12} fill={insumoSource === 'cloud' ? 'var(--accent-gold)' : 'none'} />
+                                                        SUPABASE ECOMOVING
                                                     </button>
                                                 </div>
 
@@ -1752,32 +1868,32 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                 )
                                             ) : (
                                                 <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column', padding: '20px' }}>
-                                                    {driveItems.length > 0 || driveNavigationStack.length > 0 ? (
+                                                    {driveItems.length > 0 || driveNavigationStack.length > 0 || cloudPath !== '' ? (
                                                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', height: '100%' }}>
                                                             <div style={{ display: 'flex', gap: '20px', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '15px' }}>
                                                                 <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                                                                    {driveNavigationStack.length > 0 ? (
+                                                                    {driveNavigationStack.length > 0 || cloudPath !== '' ? (
                                                                         <button onClick={handleDriveBack} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: 'var(--accent-turquoise)', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>← VOLVER</button>
                                                                     ) : (
-                                                                        <button onClick={() => setDriveItems([])} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#999', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>← CAMBIAR CARPETA</button>
+                                                                        <button onClick={() => setDriveItems([])} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#999', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>← CAMBIAR</button>
                                                                     )}
                                                                     <div style={{ display: 'flex', gap: '5px', background: 'rgba(0,0,0,0.3)', padding: '3px', borderRadius: '6px', marginRight: '15px' }}>
                                                                         <button
-                                                                            onClick={() => { setDriveSource('google'); setDriveItems([]); setDriveNavigationStack([]); }}
-                                                                            style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '9px', fontWeight: '800', background: driveSource === 'google' ? 'var(--accent-gold)' : 'transparent', color: driveSource === 'google' ? 'black' : '#888' }}
-                                                                        >GOOGLE DRIVE</button>
+                                                                            onClick={() => { setDriveSource('supabase'); handleCloudFetch(''); }}
+                                                                            style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '9px', fontWeight: '800', background: driveSource === 'supabase' ? 'var(--accent-gold)' : 'transparent', color: driveSource === 'supabase' ? 'black' : '#888' }}
+                                                                        >SUPABASE</button>
                                                                         <button
-                                                                            onClick={() => { setDriveSource('local'); handleDriveFetch(); }}
+                                                                            onClick={() => { setDriveSource('local'); handleCloudFetch(); }}
                                                                             style={{ padding: '6px 12px', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '9px', fontWeight: '800', background: driveSource === 'local' ? 'var(--accent-gold)' : 'transparent', color: driveSource === 'local' ? 'black' : '#888' }}
                                                                         >PC LOCAL</button>
                                                                     </div>
                                                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                                        <span style={{ fontSize: '10px', color: driveSource === 'local' ? 'var(--accent-turquoise)' : 'var(--accent-gold)', fontWeight: '900', letterSpacing: '2px' }}>{driveSource === 'local' ? 'LOCAL EXPLORER' : 'GDRIVE EXPLORER'}</span>
+                                                                        <span style={{ fontSize: '10px', color: driveSource === 'local' ? 'var(--accent-turquoise)' : 'var(--accent-gold)', fontWeight: '900', letterSpacing: '2px' }}>{driveSource === 'local' ? 'LOCAL EXPLORER' : 'SUPABASE STORAGE'}</span>
                                                                         <span style={{ fontSize: '9px', color: '#555', fontWeight: '600' }}>{driveItems.length} ELEMENTOS</span>
                                                                     </div>
                                                                 </div>
                                                                 <button
-                                                                    onClick={() => handleDriveFetch()}
+                                                                    onClick={() => handleCloudFetch()}
                                                                     disabled={isFetchingDrive}
                                                                     style={{ background: 'none', border: '1px solid var(--accent-turquoise)', color: 'var(--accent-turquoise)', padding: '8px 15px', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}
                                                                 >
@@ -1786,7 +1902,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                 </button>
                                                             </div>
 
-                                                            <div key={driveFolderId} style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '20px', overflowY: 'auto', padding: '10px', minHeight: '200px' }} className="custom-scroll">
+                                                            <div key={cloudPath} style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '20px', overflowY: 'auto', padding: '10px', minHeight: '200px' }} className="custom-scroll">
                                                                 {isFetchingDrive && (
                                                                     <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5, borderRadius: '8px', backdropFilter: 'blur(2px)' }}>
                                                                         <Loader2 className="animate-spin" size={30} color="var(--accent-turquoise)" />
@@ -1796,6 +1912,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                     <div
                                                                         key={item.id}
                                                                         onClick={() => item.type === 'folder' ? handleDriveNavigate(item.id) : handleSelectDriveImage(item.thumbnail!)}
+                                                                        className="group relative"
                                                                         style={{
                                                                             display: 'flex',
                                                                             flexDirection: 'column',
@@ -1805,23 +1922,54 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                             borderRadius: '8px',
                                                                             background: 'rgba(255,255,255,0.02)',
                                                                             border: '1px solid rgba(255,255,255,0.05)',
-                                                                            transition: 'all 0.3s'
+                                                                            transition: 'all 0.3s',
+                                                                            position: 'relative'
                                                                         }}
                                                                         onMouseEnter={(e) => {
                                                                             e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
                                                                             e.currentTarget.style.borderColor = item.type === 'folder' ? 'var(--accent-gold)' : 'var(--accent-turquoise)';
+                                                                            const btn = e.currentTarget.querySelector('.delete-btn-raw') as HTMLElement;
+                                                                            if (btn) btn.style.display = 'flex';
                                                                         }}
                                                                         onMouseLeave={(e) => {
                                                                             e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
                                                                             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)';
+                                                                            const btn = e.currentTarget.querySelector('.delete-btn-raw') as HTMLElement;
+                                                                            if (btn) btn.style.display = 'none';
                                                                         }}
                                                                     >
+                                                                        {driveSource === 'supabase' && (
+                                                                            <button
+                                                                                className="delete-btn-raw"
+                                                                                onClick={(e) => handleDeleteCloudItem(e, item)}
+                                                                                style={{ 
+                                                                                    position: 'absolute', 
+                                                                                    top: '5px', 
+                                                                                    right: '5px', 
+                                                                                    background: 'rgba(239, 68, 68, 0.95)', 
+                                                                                    color: 'white', 
+                                                                                    border: 'none', 
+                                                                                    borderRadius: '50%', 
+                                                                                    width: '28px', 
+                                                                                    height: '28px', 
+                                                                                    display: 'none', 
+                                                                                    alignItems: 'center', 
+                                                                                    justifyContent: 'center', 
+                                                                                    cursor: 'pointer', 
+                                                                                    zIndex: 100,
+                                                                                    boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
+                                                                                }}
+                                                                                title="Eliminar permanentemente de Supabase"
+                                                                            >
+                                                                                <Trash2 size={14} />
+                                                                            </button>
+                                                                        )}
                                                                         <div style={{ aspectRatio: '1/1', borderRadius: '4px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.2)' }}>
                                                                             {item.type === 'folder' ? (
                                                                                 <FolderOpen size={40} color="var(--accent-gold)" style={{ opacity: 0.7 }} />
                                                                             ) : (
                                                                                 <img
-                                                                                    src={driveSource === 'local' ? item.thumbnail! : `/api/drive-proxy?url=${encodeURIComponent(item.thumbnail!)}`}
+                                                                                    src={driveSource === 'local' ? item.thumbnail! : item.thumbnail!}
                                                                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                                                                     onError={(e) => {
                                                                                         (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=IMG+ERROR';
@@ -1848,25 +1996,28 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                     ) : (
                                                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '30px' }}>
                                                             <div style={{ width: '80%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                                <label style={{ fontSize: '10px', color: 'var(--accent-gold)', fontWeight: '900', letterSpacing: '2px', textAlign: 'center' }}>ID DE CARPETA GOOGLE DRIVE</label>
-                                                                <div style={{ display: 'flex', gap: '10px' }}>
-                                                                    <input
-                                                                        value={driveFolderId}
-                                                                        onChange={(e) => setDriveFolderId(e.target.value)}
-                                                                        placeholder="Ej: 1a2b3c4d5e6f7g..."
-                                                                        style={{ flex: 1, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.1)', padding: '15px', borderRadius: '4px', color: 'white', fontSize: '14px', outline: 'none' }}
-                                                                    />
-                                                                    <button
-                                                                        onClick={() => handleDriveFetch()}
-                                                                        disabled={isFetchingDrive || !driveFolderId}
-                                                                        style={{ background: 'var(--accent-gold)', color: 'black', border: 'none', padding: '0 20px', borderRadius: '4px', fontWeight: '900', cursor: 'pointer' }}
-                                                                    >
-                                                                        {isFetchingDrive ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
-                                                                    </button>
-                                                                </div>
+                                                                <button
+                                                                    onClick={() => handleCloudFetch('')}
+                                                                    style={{
+                                                                        background: 'var(--accent-gold)',
+                                                                        color: 'black',
+                                                                        padding: '20px',
+                                                                        borderRadius: '4px',
+                                                                        border: 'none',
+                                                                        fontSize: '14px',
+                                                                        fontWeight: '900',
+                                                                        letterSpacing: '2px',
+                                                                        cursor: 'pointer',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        gap: '15px'
+                                                                    }}
+                                                                >
+                                                                    <Cloud size={20} /> EXPLORAR SUPABASE STORAGE
+                                                                </button>
                                                                 <p style={{ fontSize: '9px', color: '#555', textAlign: 'center', lineHeight: '1.4' }}>
-                                                                    Pega el ID de la carpeta compartida para explorar sus activos directamente.<br />
-                                                                    Asegúrate de que la carpeta sea accesible con el enlace.
+                                                                    Accede directamente al bucket de marketing en Supabase para reutilizar activos ya optimizados.
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -2760,13 +2911,28 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                         <div style={{ display: 'flex', gap: '10px' }}>
                                                             <button
                                                                 onClick={handleGenerateMarketingAI}
-                                                                disabled={isGeneratingAI || !marketingImage || !marketingProductContext}
-                                                                style={{ background: marketingProductContext ? "rgba(0,212,189,0.1)" : 'rgba(255,255,255,0.03)', border: `1px solid ${marketingProductContext ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.1)'}`, color: marketingProductContext ? "var(--accent-turquoise)" : '#444', padding: "15px 40px", borderRadius: "4px", fontSize: "14px", fontWeight: "900", cursor: marketingProductContext ? "pointer" : 'not-allowed', textTransform: "uppercase", display: 'flex', alignItems: 'center', gap: '12px', transition: 'all 0.3s', boxShadow: marketingProductContext ? '0 0 20px rgba(0, 212, 189, 0.1)' : 'none' }}
-                                                                onMouseEnter={(e) => { if (marketingProductContext) e.currentTarget.style.background = 'rgba(0,212,189,0.2)'; }}
-                                                                onMouseLeave={(e) => { if (marketingProductContext) e.currentTarget.style.background = 'rgba(0,212,189,0.1)'; }}
+                                                                disabled={isGeneratingAI || !marketingImage}
+                                                                style={{ 
+                                                                    background: marketingImage ? "rgba(0,212,189,0.1)" : 'rgba(255,255,255,0.03)', 
+                                                                    border: `1px solid ${marketingImage ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.1)'}`, 
+                                                                    color: marketingImage ? "var(--accent-turquoise)" : '#444', 
+                                                                    padding: "15px 40px", 
+                                                                    borderRadius: "4px", 
+                                                                    fontSize: "14px", 
+                                                                    fontWeight: "900", 
+                                                                    cursor: marketingImage ? "pointer" : 'not-allowed', 
+                                                                    textTransform: "uppercase", 
+                                                                    display: 'flex', 
+                                                                    alignItems: 'center', 
+                                                                    gap: '12px', 
+                                                                    transition: 'all 0.3s', 
+                                                                    boxShadow: marketingImage ? '0 0 20px rgba(0, 212, 189, 0.1)' : 'none' 
+                                                                }}
+                                                                onMouseEnter={(e) => { if (marketingImage) e.currentTarget.style.background = 'rgba(0,212,189,0.2)'; }}
+                                                                onMouseLeave={(e) => { if (marketingImage) e.currentTarget.style.background = 'rgba(0,212,189,0.1)'; }}
                                                             >
-                                                                {isGeneratingAI ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-                                                                {isGeneratingAI ? "GENERANDO..." : "GEMINI"}
+                                                                {isGeneratingAI ? <Loader2 className="animate-spin" size={18} /> : (marketingProductContext ? <Sparkles size={18} /> : <Zap size={18} />)}
+                                                                {isGeneratingAI ? "GENERANDO..." : (marketingProductContext ? "GEMINI (SKU)" : "GEMINI (CREATIVO)")}
                                                             </button>
                                                         </div>
                                                         <button
@@ -2787,43 +2953,58 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                     </div>
                                                 )}
 
-                                                {generatedMarketing ? (
+                                                {marketingImage ? (
+
                                                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px" }}>
                                                         <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", padding: "30px", borderRadius: "8px" }}>
                                                             <h3 style={{ color: "var(--accent-gold)", fontSize: "14px", marginBottom: "20px" }}>ESTRUCTURA DE DATOS</h3>
                                                             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-                                                                <div>
-                                                                    <label style={{ color: "#555", fontSize: "10px", display: "block", marginBottom: "5px" }}>ASUNTO</label>
+                                                                 <div>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                                                                        <label style={{ color: "#555", fontSize: "10px", fontWeight: "700", letterSpacing: "1px" }}>ASUNTO</label>
+                                                                        {isGeneratingAI && <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.5 }} style={{ fontSize: '8px', color: 'var(--accent-turquoise)', fontWeight: '900' }}>REDACTANDO...</motion.span>}
+                                                                    </div>
                                                                     <input
-                                                                        value={generatedMarketing.subject}
+                                                                        value={generatedMarketing?.subject || ''}
                                                                         onChange={(e) => handleMarketingChange('subject', e.target.value)}
-                                                                        style={{ width: "100%", background: "#000", border: "1px solid #333", padding: "12px", color: "white", borderRadius: "4px" }}
+                                                                        placeholder={isGeneratingAI ? "Analizando imagen..." : "Asunto del envío"}
+                                                                        style={{ width: "100%", background: "#000", border: `1px solid ${isGeneratingAI ? 'var(--accent-turquoise)' : '#333'}`, padding: "12px", color: "white", borderRadius: "4px", opacity: isGeneratingAI ? 0.6 : 1, transition: 'all 0.3s' }}
                                                                     />
                                                                 </div>
                                                                 <div>
-                                                                    <label style={{ color: "#555", fontSize: "10px", display: "block", marginBottom: "5px" }}>TITULAR L1</label>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                                                                        <label style={{ color: "#555", fontSize: "10px", fontWeight: "700", letterSpacing: "1px" }}>TITULAR L1</label>
+                                                                        {marketingProductContext && <span style={{ fontSize: '8px', color: 'var(--accent-gold)', fontWeight: '900', border: '1px solid var(--accent-gold)', padding: '1px 4px', borderRadius: '2px' }}>VINCULADO</span>}
+                                                                    </div>
                                                                     <input
-                                                                        value={generatedMarketing.part1}
+                                                                        value={generatedMarketing?.part1 || ''}
                                                                         onChange={(e) => handleMarketingChange('part1', e.target.value)}
-                                                                        style={{ width: "100%", background: "#000", border: "1px solid #333", padding: "12px", color: "white", borderRadius: "4px" }}
+                                                                        placeholder={isGeneratingAI ? "Sintetizando valor..." : "Mensaje principal (Mayúsculas)"}
+                                                                        style={{ width: "100%", background: "#000", border: `1px solid ${isGeneratingAI ? 'var(--accent-turquoise)' : '#333'}`, padding: "12px", color: "white", borderRadius: "4px", opacity: isGeneratingAI ? 0.6 : 1, transition: 'all 0.3s', textTransform: 'uppercase' }}
                                                                     />
                                                                 </div>
                                                                 <div>
-                                                                    <label style={{ color: "#555", fontSize: "10px", display: "block", marginBottom: "5px" }}>DESCRIPCIÓN L2</label>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                                                                        <label style={{ color: "#555", fontSize: "10px", fontWeight: "700", letterSpacing: "1px" }}>DESCRIPCIÓN L2</label>
+                                                                        {isGeneratingAI && <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 2 }} style={{ fontSize: '8px', color: 'var(--accent-turquoise)', fontWeight: '900' }}>INYECTANDO NARRATIVA...</motion.span>}
+                                                                    </div>
                                                                     <textarea
-                                                                        value={generatedMarketing.part2}
+                                                                        value={generatedMarketing?.part2 || ''}
                                                                         onChange={(e) => handleMarketingChange('part2', e.target.value)}
-                                                                        style={{ width: "100%", height: "100px", background: "#000", border: "1px solid #333", padding: "12px", color: "#888", borderRadius: "4px" }}
+                                                                        placeholder={isGeneratingAI ? "Generando descripción B2B..." : "Cuerpo del mensaje"}
+                                                                        style={{ width: "100%", height: "120px", background: "#000", border: `1px solid ${isGeneratingAI ? 'var(--accent-turquoise)' : '#333'}`, padding: "12px", color: "#888", borderRadius: "4px", opacity: isGeneratingAI ? 0.6 : 1, transition: 'all 0.3s', resize: 'none', lineHeight: '1.6' }}
                                                                     />
                                                                 </div>
+
                                                             </div>
                                                         </div>
                                                         <div style={{ background: "#fff", padding: "40px", borderRadius: "8px", overflowY: "auto", maxHeight: "600px", border: '1px solid #333' }}>
                                                             <iframe
-                                                                srcDoc={generatedMarketing.html.replace('IMAGE_URL_PLACEHOLDER', marketingImage || (selectedProduct?.images?.[0] || ''))}
+                                                                srcDoc={generatedMarketing?.html?.replace('IMAGE_URL_PLACEHOLDER', marketingImage || (selectedProduct?.images?.[0] || ''))}
                                                                 style={{ width: "100%", height: "100%", minHeight: "600px", border: "none" }}
                                                                 title="Marketing Preview"
                                                             />
+
                                                         </div>
                                                     </div>
                                                 ) : (

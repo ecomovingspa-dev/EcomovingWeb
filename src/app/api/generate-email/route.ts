@@ -12,24 +12,31 @@ export async function POST(request: NextRequest) {
         }
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-3.0-flash',
+            model: 'gemini-1.5-flash',
             generationConfig: { responseMimeType: "application/json" }
         });
 
         const prompt = `
-PRIMARY INPUT (Única fuente de verdad - Características Técnicas):
+Eres el Módulo de Inteligencia Semántica @seo_mkt de Ecomoving. Tu función es transformar datos técnicos en activos de autoridad comercial y narrativa de alto impacto (estilo Comercial de TV).
+
+PRIMARY INPUT (Características Técnicas - Fuente de Verdad):
 ${technical_specs.join('\n')}
 
-REGLAS DE ORO (@seo_mkt):
-1. IMPACTO B2B IRRESISTIBLE: Escribe un Asunto de email que abra puertas corporativas (directo y contundente).
-2. EXTREMISTAMENTE BREVE Y PERSUASIVO: El cuerpo del correo debe ser de MÁXIMO 2 PÁRRAFOS MUY CORTOS (total no más de 3 líneas). Olvida introducciones largas. Destaca la retención de marca o merchandising. Usa el nombre expreso del producto "${productName}".
-3. FIDELIDAD TÉCNICA: Usa la información técnica entregada, no inventes bondades.
-4. FORMATO: NO devuelvas NADA MÁS que un objeto JSON válido con las 2 claves, nada de markdown ni tags extra.
+PRODUCT NAME: ${productName}
 
-ESTRUCTURA DE SALIDA REQUERIDA:
+REGLAS CRÍTICAS (@seo_mkt):
+1. TONO: "Cierre de Negocio". Ejecutivo, directo, seguro. Superioridad técnica.
+2. NARRATIVA ARMÓNICA: Debe ser rítmica, breve y de alto impacto psicológico. 
+3. CUERPO: Genera un ÚNICO PÁRRAFO FLUIDO (sin viñetas, sin números, sin itemizados). Máximo 4 líneas.
+4. ASUNTO: Debe ser un abre-puertas corporativo (máx 5-6 palabras).
+5. PART1: Un titular secundario en mayúsculas que refuerce la propuesta de valor (máx 6 palabras).
+6. FIDELIDAD ABSOLUTA: Prohibido inventar materiales o certificaciones no presentes en el input.
+
+ESTRUCTURA DE SALIDA (JSON ÚNICAMENTE):
 {
-  "email_subject": "Asunto del correo ultra persuasivo B2B (Ej: 'Exclusividad Ejecutiva: El Regalo Corporativo Definitivo')",
-  "email_body": "Cuerpo del correo, con espacios /n entre párrafos. Potente, directo y refinado."
+  "email_subject": "Asunto potente",
+  "part1": "TITULAR SECUNDARIO EN MAYÚSCULAS",
+  "email_body": "Párrafo armónico y fluido de la narrativa."
 }
 `;
 
@@ -62,3 +69,4 @@ ESTRUCTURA DE SALIDA REQUERIDA:
         );
     }
 }
+

@@ -36,8 +36,12 @@ export default function MarketingBentoFactory({ initialProduct, initialImage }: 
     // Estados IA 
     const [isGeneratingMkt, setIsGeneratingMkt] = useState(false);
     const [generatedTexts, setGeneratedTexts] = useState<any>(null);
+    const [manualAsunto, setManualAsunto] = useState('');
+    const [manualPart1, setManualPart1] = useState('');
+    const [manualCuerpo, setManualCuerpo] = useState('');
 
     const [isSaving, setIsSaving] = useState(false);
+
     const [copiedContent, setCopiedContent] = useState<'subject' | 'body' | null>(null);
     const [generatedLayoutHtml, setGeneratedLayoutHtml] = useState<string | null>(null);
     const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
@@ -142,6 +146,9 @@ export default function MarketingBentoFactory({ initialProduct, initialImage }: 
             if (!dbResponse.success) throw new Error(dbResponse.details || dbResponse.error || "MKT API Error");
 
             setGeneratedTexts(dbResponse.data);
+            setManualAsunto(dbResponse.data.email_subject || '');
+            setManualPart1(dbResponse.data.part1 || '');
+            setManualCuerpo(dbResponse.data.email_body || '');
 
             // Scroll suave hacia los resultados (después de 500ms al rendear)
             setTimeout(() => {
@@ -186,17 +193,25 @@ export default function MarketingBentoFactory({ initialProduct, initialImage }: 
                     </div>
                     
                     <!-- TITULAR (ASUNTO) -->
-                    <h1 style="color: #0b3c42; font-size: 23px; font-weight: 900; margin: 0 40px 25px 40px; line-height: 1.3; font-family: 'Arial', sans-serif; text-transform: capitalize; letter-spacing: -0.3px;">
-                        ${generatedTexts.email_subject.toLowerCase()}
+                    <h1 style="color: #0b3c42; font-size: 23px; font-weight: 900; margin: 0 40px 10px 40px; line-height: 1.3; font-family: 'Arial', sans-serif; text-transform: capitalize; letter-spacing: -0.3px;">
+                        ${manualAsunto.toLowerCase()}
                     </h1>
+
+                    <!-- PART 1 (SUBTITULO) -->
+                    ${manualPart1 ? `
+                    <div style="color: #1c9a8a; font-size: 13px; font-weight: 800; margin: 0 40px 25px 40px; text-transform: uppercase; letter-spacing: 2px; font-family: 'Arial', sans-serif;">
+                        ${manualPart1}
+                    </div>
+                    ` : ''}
                     
                     <!-- LINEA SEPARADORA SUTIL -->
                     <hr style="border: none; border-top: 1px solid #f0f3f5; margin: 0 40px 30px 40px;" />
 
-                    <!-- CUERPO Y MENSAJE SUPERIOR -->
+                    <!-- CUERPO Y MENSAJE SUPERIOR (ARMÓNICO) -->
                     <div style="color: #4a5568; font-size: 15px; line-height: 1.6; margin-bottom: 40px; padding: 0 45px; text-align: center; white-space: pre-wrap; font-family: 'Arial', sans-serif;">
-                        ${generatedTexts.email_body}
+                        ${manualCuerpo}
                     </div>
+
                     
                     <!-- BENTO COLLAGE (IMÁGENES) - MESA ROBUSTA -->
                     <div style="margin-bottom: 40px; width: 100%; padding: 0 30px; box-sizing: border-box; display: inline-block;">
@@ -231,8 +246,9 @@ export default function MarketingBentoFactory({ initialProduct, initialImage }: 
                 {
                     estado: 'BORRADOR',
                     cuerpo_html: generatedLayoutHtml,
-                    asunto: generatedTexts.email_subject,
-                    cuerpo: generatedTexts.email_body,
+                    asunto: manualAsunto,
+                    cuerpo: manualCuerpo,
+
                     imagen_url: mainImage, // imagen de referencia principal
                     nombre_envio: product ? `Campaña ${product.nombre}` : 'Boletín Genérico',
                     activo: true
@@ -445,30 +461,46 @@ export default function MarketingBentoFactory({ initialProduct, initialImage }: 
                                 </div>
 
                                 {/* SI HAY TEXTOS GENERADOS SE MUESTRA EL RESULTADO DE IA Y GUARDADO */}
-                                {generatedTexts && (
+                                { (generatedTexts || bentoSlots.some(s => s)) && (
                                     <div ref={bentoRef} style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', padding: '30px', borderRadius: '16px' }}>
                                         <div style={{ marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                             <Sparkles size={20} color="var(--accent-gold)" />
-                                            <h3 style={{ color: 'white', margin: 0, fontSize: '18px', letterSpacing: '1px' }}>TEXTOS DE CAMPAÑA CREADOS POR IA</h3>
+                                            <h3 style={{ color: 'white', margin: 0, fontSize: '18px', letterSpacing: '1px' }}>EDITOR DE CAMPAÑA @SEO_MKT</h3>
                                         </div>
 
-                                        <div style={{ marginBottom: '25px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                <label style={{ fontSize: '10px', color: '#666', fontWeight: '800', letterSpacing: '2px' }}>ASUNTO DEL CORREO</label>
-                                            </div>
-                                            <div style={{ backgroundColor: '#0a0a0a', border: '1px solid #222', padding: '20px', borderRadius: '8px', color: 'var(--accent-turquoise)', fontSize: '18px', fontWeight: '800' }}>
-                                                {generatedTexts.email_subject}
-                                            </div>
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <label style={{ fontSize: '10px', color: '#666', fontWeight: '800', letterSpacing: '2px', display: 'block', marginBottom: '8px' }}>ASUNTO (Abre-puertas)</label>
+                                            <input 
+                                                type="text"
+                                                value={manualAsunto}
+                                                onChange={(e) => setManualAsunto(e.target.value)}
+                                                placeholder="Ej: Estética Zen. El nuevo lujo es natural."
+                                                style={{ backgroundColor: '#0a0a0a', border: '1px solid #222', padding: '15px', borderRadius: '8px', color: 'var(--accent-turquoise)', fontSize: '16px', fontWeight: '800', width: '100%', outline: 'none' }}
+                                            />
+                                        </div>
+
+                                        <div style={{ marginBottom: '20px' }}>
+                                            <label style={{ fontSize: '10px', color: '#666', fontWeight: '800', letterSpacing: '2px', display: 'block', marginBottom: '8px' }}>PART 1 (Titular secundario)</label>
+                                            <input 
+                                                type="text"
+                                                value={manualPart1}
+                                                onChange={(e) => setManualPart1(e.target.value)}
+                                                placeholder="Ej: LUJO ORGÁNICO EN ARMONÍA"
+                                                style={{ backgroundColor: '#0a0a0a', border: '1px solid #222', padding: '12px', borderRadius: '8px', color: 'white', fontSize: '12px', fontWeight: '700', width: '100%', outline: 'none', textTransform: 'uppercase' }}
+                                            />
                                         </div>
 
                                         <div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                <label style={{ fontSize: '10px', color: '#666', fontWeight: '800', letterSpacing: '2px' }}>CUERPO O MENSAJE DEL CORREO</label>
-                                            </div>
-                                            <div style={{ backgroundColor: '#0a0a0a', border: '1px solid #222', padding: '20px', borderRadius: '8px', color: '#ddd', fontSize: '14px', lineHeight: '1.7', whiteSpace: 'pre-wrap' }}>
-                                                {generatedTexts.email_body}
-                                            </div>
+                                            <label style={{ fontSize: '10px', color: '#666', fontWeight: '800', letterSpacing: '2px', display: 'block', marginBottom: '8px' }}>CUERPO (Narrativa harmónica)</label>
+                                            <textarea 
+                                                value={manualCuerpo}
+                                                onChange={(e) => setManualCuerpo(e.target.value)}
+                                                placeholder="Escribe aquí el párrafo fluido..."
+                                                rows={4}
+                                                style={{ backgroundColor: '#0a0a0a', border: '1px solid #222', padding: '15px', borderRadius: '8px', color: '#ddd', fontSize: '14px', lineHeight: '1.7', width: '100%', outline: 'none', resize: 'vertical' }}
+                                            />
                                         </div>
+
 
                                         <div style={{ marginTop: '30px', borderTop: '1px solid #333', paddingTop: '30px' }}>
                                             {!generatedLayoutHtml ? (
