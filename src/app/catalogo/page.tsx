@@ -7,8 +7,11 @@ import Link from 'next/link';
 import { Search, Settings } from 'lucide-react';
 
 export default function CatalogPage() {
+    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const initialSearch = searchParams?.get('search') || searchParams?.get('busqueda') || '';
+
     const [isAdmin, setIsAdmin] = React.useState(false);
-    const [search, setSearch] = React.useState('');
+    const [search, setSearch] = React.useState(initialSearch);
 
     return (
         <main style={{ backgroundColor: '#050505', minHeight: '100vh' }}>

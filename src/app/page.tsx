@@ -39,7 +39,6 @@ const BentoBlock = ({ block, previewMode }: {
   const [mSpanW, mSpanH] = (block.mSpan || `${block.mCol ? (block.span || '1x1').split('x')[0] : 48}x${(block.span || '1x1').split('x')[1] || 8}`).split('x').map((n: string) => parseInt(n) || 1);
   const [tSpanW, tSpanH] = (block.tSpan || block.span || '1x1').split('x').map((n: string) => parseInt(n) || 1);
   const images = block.gallery && block.gallery.length > 0 ? block.gallery : [block.image].filter(Boolean);
-  const isPeek = ['peek', 'full-carousel'].includes(block.galleryAnimation || '') && images.length >= 2;
   
   const [spanW, spanH] = finalSpan.split('x').map((n: string) => parseInt(n) || 1);
   const isImage = block.type === 'image' || block.type === 'both' || !block.type;
@@ -61,6 +60,18 @@ const BentoBlock = ({ block, previewMode }: {
     setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
+  const categoryLink = useMemo(() => {
+    if (block.link) return block.link;
+    const title = (block.blockTitle || block.label || '').toUpperCase();
+    if (title.includes('HIDRATACI')) return '/catalogo?filter=01. HIDRATACIÓN';
+    if (title.includes('ESCRITURA') || title.includes('OFICINA') || title.includes('TRABAJO')) return '/catalogo?filter=02. ESPACIO DE TRABAJO';
+    if (title.includes('MOVIMIENTO') || title.includes('URBANO') || title.includes('TRANSPORTE') || title.includes('VIAJE')) return '/catalogo?filter=03. MOVIMIENTO URBANO';
+    if (title.includes('TECH') || title.includes('INNOVATION')) return '/catalogo?filter=04. TECH INNOVATION';
+    if (title.includes('GOURMET')) return '/catalogo?filter=05. GOURMET EXPERIENCE';
+    if (title.includes('PREMIUM')) return '/catalogo?filter=PREMIUM';
+    return '/catalogo';
+  }, [block.link, block.blockTitle, block.label]);
+
   return (
     <motion.div
       ref={cardRef}
@@ -70,7 +81,6 @@ const BentoBlock = ({ block, previewMode }: {
       style={{
         gridColumn: `var(--final-col) / span var(--final-span-w)`,
         gridRow: `var(--final-row) / span var(--final-span-h)`,
-        // CSS Variables for responsive power
         '--final-col': finalCol,
         '--final-row': finalRow,
         '--final-span-w': spanW,
@@ -87,10 +97,11 @@ const BentoBlock = ({ block, previewMode }: {
         borderRadius: block.isCircle ? '50%' : (block.borderRadius || '16px'),
         backgroundColor: block.bgColor || 'rgba(255,255,255,0.03)',
         overflow: 'hidden',
-        border: block.borderWidth ? `${block.borderWidth} solid ${block.borderColor || 'rgba(255,255,255,0.1)'}` : 'none',
-        boxShadow: shadowStyles[block.shadow as keyof typeof shadowStyles] || shadowStyles.none,
+        border: (block.borderWidth || isHovered) ? `${block.borderWidth || 1}px solid ${isHovered ? 'var(--eco-accent-primary)' : (block.borderColor || 'rgba(255,255,255,0.1)')}` : 'none',
+        boxShadow: isHovered ? '0 20px 60px rgba(0,212,189,0.1)' : (shadowStyles[block.shadow as keyof typeof shadowStyles] || shadowStyles.none),
         aspectRatio: aspectRatio,
-        margin: '4px', // Sincronizado con Studio
+        margin: '4px',
+        transition: 'all 0.4s cubic-bezier(0.19, 1, 0.22, 1)'
       } as any}
       className="bento-block-mobile"
     >
@@ -99,7 +110,7 @@ const BentoBlock = ({ block, previewMode }: {
           style={{
             position: 'absolute', inset: 0, zIndex: 10,
             pointerEvents: 'none',
-            background: `radial-gradient(500px circle at ${mousePos.x}px ${mousePos.y}px, rgba(255,255,255,0.055), transparent 45%)`,
+            background: `radial-gradient(500px circle at ${mousePos.x}px ${mousePos.y}px, rgba(0,212,189,0.1), transparent 45%)`,
             opacity: isHovered ? 1 : 0,
             transition: 'opacity 0.3s ease'
           }}
@@ -138,7 +149,7 @@ const BentoBlock = ({ block, previewMode }: {
         </div>
       )}
 
-      {(block.blockTitle || block.blockParagraph || block.link) && (
+      {(block.blockTitle || block.blockParagraph || true) && (
         <div style={{
           position: 'absolute',
           top: block.textPadding ? (block.textPadding.includes(' ') ? block.textPadding.split(' ')[0] : block.textPadding) : '30px',
@@ -196,31 +207,32 @@ const BentoBlock = ({ block, previewMode }: {
             </p>
           )}
 
-          {block.link && (
-            <div
-              style={{
-                marginTop: 'auto', 
-                padding: '10px 24px',
-                backgroundColor: 'var(--eco-accent-primary)',
-                color: 'black',
-                fontWeight: 800,
-                fontSize: '12px',
-                letterSpacing: '1.5px',
-                textTransform: 'uppercase',
-                borderRadius: '4px',
-                boxShadow: '0 4px 15px rgba(0,212,189,0.4)',
-                pointerEvents: 'auto',
-                cursor: 'pointer',
-                transition: 'transform 0.2s',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.location.href = block.link;
-              }}
-            >
-              VER DETALLE
-            </div>
-          )}
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            style={{
+              marginTop: 'auto', 
+              padding: '10px 24px',
+              backgroundColor: isHovered ? 'white' : 'var(--eco-accent-primary)',
+              color: 'black',
+              fontWeight: 900,
+              fontSize: '11px',
+              letterSpacing: '2px',
+              textTransform: 'uppercase',
+              borderRadius: '2px',
+              boxShadow: isHovered ? '0 10px 30px rgba(0,212,189,0.5)' : '0 4px 15px rgba(0,212,189,0.4)',
+              pointerEvents: 'auto',
+              cursor: 'pointer',
+              transition: 'all 0.3s cubic-bezier(0.19, 1, 0.22, 1)',
+              display: (block.blockTitle || block.blockParagraph || block.link) ? 'block' : 'none'
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              window.location.href = categoryLink;
+            }}
+          >
+            {block.buttonText || 'VER COLECCIÓN'}
+          </motion.div>
         </div>
       )}
     </motion.div>

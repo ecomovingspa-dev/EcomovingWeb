@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Info, Plus, ChevronRight, X, Edit3, Search, Image as ImageIcon, Trash2, Save, Check, Star } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -22,14 +23,18 @@ export default function ProductCatalog({
     adminMode?: boolean,
     externalSearch?: string
 }) {
+    const searchParams = useSearchParams();
+    const initialFilter = searchParams.get('filter') || 'Todos';
+    const initialSearch = searchParams.get('search') || '';
+
     const [products, setProducts] = useState<Product[]>([]);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [activeImage, setActiveImage] = useState<string | null>(null);
     const [galleryImages, setGalleryImages] = useState<string[]>([]);
     const [isEditing, setIsEditing] = useState(false);
-    const [filter, setFilter] = useState('Todos');
+    const [filter, setFilter] = useState(initialFilter);
     const [isExpandingCategories, setIsExpandingCategories] = useState(false);
-    const [specialCategories, setSpecialCategories] = useState(['01. HIDRATACIÓN', '02. ESPACIO DE TRABAJO', '03. MOVIMIENTO URBANO', '04. TECH INNOVATION', '05. GOURMET EXPERIENCE']);
+    const [specialCategories, setSpecialCategories] = useState(['01. HIDRATACIÓN', '02. ESPACIO DE TRABAJO', '03. MOVIMIENTO URBANO', '04. TECH INNOVATION', '05. GOURMET EXPERIENCE', 'PREMIUM']);
 
     useEffect(() => {
         // Cargar productos aprobados desde Supabase
