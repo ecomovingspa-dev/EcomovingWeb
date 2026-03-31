@@ -1730,7 +1730,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                         onClick={() => setActiveTab('marketing')}
                                         style={{ background: 'none', border: 'none', color: activeTab === 'marketing' ? 'var(--accent-turquoise)' : '#555', fontSize: '12px', fontWeight: '800', cursor: 'pointer', letterSpacing: '2px', textTransform: 'uppercase', padding: '10px 0', borderBottom: activeTab === 'marketing' ? '2px solid var(--accent-turquoise)' : '2px solid transparent', transition: 'all 0.3s' }}
                                     >
-                                        MARKETING
+                                        SEO / MKT
                                     </button>
                                 </div>
                             </div>
@@ -2864,11 +2864,11 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                 activeTab === "marketing" && (
                                     <React.Fragment>
                                         <div className="custom-scroll" style={{ padding: "60px", overflowY: "auto", backgroundColor: "#050505", gridColumn: "1 / -1", height: '100%' }}>
-                                            <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+                                            <div style={{ maxWidth: "100%", margin: "0 auto" }}>
                                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "40px" }}>
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                                                         <h2 style={{ color: "white", fontFamily: "var(--font-heading)", fontSize: "32px", margin: 0, letterSpacing: "4px", textTransform: "uppercase" }}>
-                                                            AI CONTENT <span style={{ color: "var(--accent-gold)" }}>FACTORY</span>
+                                                            SEO / MKT <span style={{ color: "var(--accent-gold)" }}>CONTENT FACTORY</span>
                                                         </h2>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                                             {marketingImage && (
@@ -2931,8 +2931,8 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                 onMouseEnter={(e) => { if (marketingImage) e.currentTarget.style.background = 'rgba(0,212,189,0.2)'; }}
                                                                 onMouseLeave={(e) => { if (marketingImage) e.currentTarget.style.background = 'rgba(0,212,189,0.1)'; }}
                                                             >
-                                                                {isGeneratingAI ? <Loader2 className="animate-spin" size={18} /> : (marketingProductContext ? <Sparkles size={18} /> : <Zap size={18} />)}
-                                                                {isGeneratingAI ? "GENERANDO..." : (marketingProductContext ? "GEMINI (SKU)" : "GEMINI (CREATIVO)")}
+                                                                {isGeneratingAI ? <Loader2 className="animate-spin" size={18} /> : (marketingProductContext ? <Sparkles size={18} strokeWidth={3} /> : <Zap size={18} fill="currentColor" />)}
+                                                                {isGeneratingAI ? "ENCENDIENDO MOTOR..." : (marketingProductContext ? "MOTOR @seo_mkt (SKU)" : "MOTOR @seo_mkt (CREATIVO)")}
                                                             </button>
                                                         </div>
                                                         <button
@@ -2955,7 +2955,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
                                                 {marketingImage ? (
 
-                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "40px" }}>
+                                                    <div style={{ display: "grid", gridTemplateColumns: "550px 1fr", gap: "40px" }}>
                                                         <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", padding: "30px", borderRadius: "8px" }}>
                                                             <h3 style={{ color: "var(--accent-gold)", fontSize: "14px", marginBottom: "20px" }}>ESTRUCTURA DE DATOS</h3>
                                                             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -2998,10 +2998,10 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
                                                             </div>
                                                         </div>
-                                                        <div style={{ background: "#fff", padding: "40px", borderRadius: "8px", overflowY: "auto", maxHeight: "600px", border: '1px solid #333' }}>
+                                                        <div style={{ background: "#fff", padding: "40px", borderRadius: "8px", border: '1px solid #333' }}>
                                                             <iframe
                                                                 srcDoc={generatedMarketing?.html?.replace('IMAGE_URL_PLACEHOLDER', marketingImage || (selectedProduct?.images?.[0] || ''))}
-                                                                style={{ width: "100%", height: "100%", minHeight: "600px", border: "none" }}
+                                                                style={{ width: "100%", height: "1100px", border: "none" }}
                                                                 title="Marketing Preview"
                                                             />
 

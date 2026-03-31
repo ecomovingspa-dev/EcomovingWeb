@@ -316,6 +316,79 @@ export default function Home() {
           padding: '120px 50px'
         }}
       >
+        {/* BRAND BADGE - SUPERIOR CORNER */}
+        <div style={{
+          position: 'absolute',
+          top: '40px',
+          left: '50px',
+          right: '50px',
+          zIndex: 100,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          pointerEvents: 'none'
+        }}>
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '15px',
+              pointerEvents: 'auto'
+            }}
+          >
+            <img 
+              src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" 
+              alt="Ecomoving Logo" 
+              style={{ maxHeight: '35px', width: 'auto', filter: 'brightness(1.5)' }} 
+            />
+            <div style={{ width: '1px', height: '15px', backgroundColor: 'rgba(255,255,255,0.2)' }} />
+            <span style={{ 
+              fontSize: '10px', 
+              fontWeight: 800, 
+              letterSpacing: '3px', 
+              color: 'var(--eco-accent-primary)',
+              fontFamily: 'var(--eco-font-heading)',
+              textTransform: 'uppercase'
+            }}>
+              EST. 2026
+            </span>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.4 }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              pointerEvents: 'auto'
+            }}
+          >
+            <div style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: 'var(--eco-accent-primary)',
+              boxShadow: '0 0 10px var(--eco-accent-primary)'
+            }} className="engine-pulse" />
+            <span style={{ 
+              fontSize: '9px', 
+              fontWeight: 900, 
+              letterSpacing: '2px', 
+              color: 'white',
+              opacity: 0.6,
+              fontFamily: 'var(--eco-font-heading)',
+              textTransform: 'uppercase'
+            }}>
+              ECOMOVING_ENGINE_LIVE
+            </span>
+          </motion.div>
+        </div>
+
         <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
           <AnimatePresence mode="popLayout">
             {heroImages[currentHeroSlide] && (
@@ -386,6 +459,15 @@ export default function Home() {
       </section>
 
       <style jsx global>{`
+        @keyframes engine-pulse {
+          0% { opacity: 0.4; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 15px var(--eco-accent-primary); }
+          100% { opacity: 0.4; transform: scale(0.95); }
+        }
+        .engine-pulse {
+          animation: engine-pulse 2s infinite ease-in-out;
+        }
+
         @media (max-width: 768px) {
           .bento-grid-mobile {
             grid-template-columns: repeat(48, 1fr) !important;

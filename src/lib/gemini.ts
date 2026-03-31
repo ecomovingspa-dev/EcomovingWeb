@@ -128,17 +128,13 @@ export const getMarketingHTMLTemplate = (subject: string, p1: string, p2: string
 
 
 
-
-export const generateMarketingAI = async (
+export const generateMarketingAI = async (
     imageSource: string,
     context: string = "",
     ctaLink: string = "https://www.ecomoving.cl",
     ctaText: string = "EXPLORAR PORTAFOLIO"
 ): Promise<MarketingContent> => {
     if (!genAI) throw new Error("API KEY MISSING");
-
-    // PROTOCOLO @seo_mkt: Usamos gemini-2.0-flash (disponible y estable en este entorno)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     // PROTOCOLO @seo_mkt — Logic Gate: MULTIMODAL FALLBACK
     const isLifestyle = !context || !context.includes('CARACTERISTICAS_TECNICAS:') || context.replace('CARACTERISTICAS_TECNICAS:', '').trim() === '';
@@ -175,62 +171,62 @@ REGLAS DE ORO (@seo_mkt — sin excepciones):
 4. NARRATIVA RÍTMICA: Estilo Comercial de TV. Frases cortas, ritmo, alto impacto psicológico para el decisor B2B.
 5. PROHIBIDO EL RELLENO: Si no puedes construir una afirmación basada en la visión o los datos, simplemente no la hagas.
 
-ESTRUCTURA DE SALIDA REQUERIDA (responde SOLO esto, sin texto adicional, sin emojis, sin asteriscos):
-SUBJECT: [MÁX 4 PALABRAS. Si generas más de 4 palabras, el sistema rechazará tu respuesta.]
-PART1: [MÁX 6 PALABRAS en mayúsculas. Sin nombre de producto.]
-PART2: [MÁXIMO 1 PÁRRAFO FLUIDO Y ARMÓNICO. Sin bullets (•-*), sin números, sin itemizados. Estilo Comercial de TV.]
+ESTRUCTURA DE SALIDA REQUERIDA (Responde EXACTAMENTE con estas etiquetas, evita negritas en las etiquetas si es posible):
+SUBJECT: [MÁX 4-5 PALABRAS. Directo e intrigante.]
+PART1: [MÁX 6-8 PALABRAS en mayúsculas. Sin nombre de producto.]
+PART2: [MÁXIMO 1 PÁRRAFO FLUIDO Y ARMÓNICO. Estilo Comercial de TV.]
 
-EJEMPLO DE SALIDA IDEAL (usa este como modelo exacto de formato):
+EJEMPLO DE SALIDA IDEAL:
 SUBJECT: Tecnología que transforma
 PART1: PRECISIÓN TÉRMICA SIN COMPROMISO
 PART2: Esta solución avanzada mantiene la temperatura ideal durante jornadas extensas, combinando aislamiento de doble pared en acero inoxidable con un diseño ergonómico de alta capacidad. Su sello hermético y base antideslizante garantizan rendimiento superior, mientras su material reciclado refuerza el compromiso ambiental de su organización.
-
 `;
 
     // --- BLINDAJE NIVEL 2: Sanitizador de salida post-generación ---
     const sanitizeOutput = (subject: string, part1: string, part2: string) => {
-        // SUBJECT: máx 4 palabras
+        // SUBJECT: flexibilización a 6 palabras para evitar cortes bruscos
         const sanitizedSubject = subject
             .replace(/[*#\-•]/g, '')
             .trim()
             .split(/\s+/)
-            .slice(0, 4)
+            .slice(0, 6)
             .join(' ');
 
-        // PART1: máx 6 palabras, uppercase
+        // PART1: flexibilización a 10 palabras, uppercase
         const sanitizedPart1 = part1
             .replace(/[*#\-•]/g, '')
             .trim()
             .split(/\s+/)
-            .slice(0, 6)
+            .slice(0, 10)
             .join(' ')
             .toUpperCase();
 
-        // PART2: párrafo fluido, sin bullets
         const cleanPart2 = part2
-            .replace(/^[\s\u2022\-*’‘\d\.]+/gm, '') // quitar bullets/números al inicio de línea
-            .replace(/[*#]/g, '')                         // quitar asteriscos y hashes
-            .replace(/\s+/g, ' ')                        // Normalizar espacios
+            .replace(/^[\s\u2022\-*’‘\d\.]+/gm, '') 
+            .replace(/[*#]/g, '')                         
+            .replace(/\s+/g, ' ')                        
             .trim();
 
-        const sanitizedPart2 = cleanPart2;
-
-
-        return { subject: sanitizedSubject, part1: sanitizedPart1, part2: sanitizedPart2 };
+        return { subject: sanitizedSubject, part1: sanitizedPart1, part2: cleanPart2 };
     };
 
-    // --- FIN BLINDAJE NIVEL 2 ---
     const maxRetries = 5;
     let lastError: any;
 
     for (let i = 0; i < maxRetries; i++) {
         try {
+            // PROTOCOLO @seo_mkt: Intentar con 2.0-flash, fallback a 1.5-flash en reintentos por 429
+            const modelName = i < 2 ? "gemini-2.0-flash" : "gemini-1.5-flash";
+            const model = genAI.getGenerativeModel({ model: modelName });
+
             const result = await model.generateContent([
                 { text: prompt },
                 { inlineData: { data: base64Data, mimeType: blob.type || "image/jpeg" } }
             ]);
 
             const text = result.response.text();
+            
+            // Regex mejoradas para soportar markdown y variaciones de espaciado
             const findField = (regexes: RegExp[]) => {
                 for (const re of regexes) {
                     const match = text.match(re);
@@ -239,11 +235,10 @@ PART2: Esta solución avanzada mantiene la temperatura ideal durante jornadas ex
                 return null;
             };
 
-            const subject = findField([/SUBJECT:\s*(.*)/i, /ASUNTO:\s*(.*)/i]) || "Tecnología que transforma";
-            const p1 = findField([/PART1:\s*([\s\S]*?)(?=PART2:|$)/i, /TITULAR:\s*([\s\S]*?)(?=CUERPO:|$)/i]) || "INGENIERÍA DE VANGUARDIA";
-            const p2 = findField([/PART2:\s*([\s\S]*)$/i, /CUERPO:\s*([\s\S]*)$/i]) || text;
+            const subject = findField([/\**SUBJECT:\**\s*(.*)/i, /\**ASUNTO:\**\s*(.*)/i, /SUBJECT:\s*(.*)/i]) || "Tecnología que transforma";
+            const p1 = findField([/\**PART1:\**\s*([\s\S]*?)(?=\**PART2:\**|$)/i, /\**TITULAR:\**\s*([\s\S]*?)(?=\**CUERPO:\**|$)/i, /PART1:\s*([\s\S]*?)(?=PART2:|$)/i]) || "INGENIERÍA DE VANGUARDIA";
+            const p2 = findField([/\**PART2:\**\s*([\s\S]*)$/i, /\**CUERPO:\**\s*([\s\S]*)$/i, /PART2:\s*([\s\S]*)$/i]) || text;
 
-            // BLINDAJE NIVEL 2: aplicar sanitizador antes de devolver
             const { subject: s, part1: p1s, part2: p2s } = sanitizeOutput(subject, p1, p2);
 
             return {
@@ -259,15 +254,15 @@ PART2: Esta solución avanzada mantiene la temperatura ideal durante jornadas ex
             const isRateLimit = error?.message?.includes('429') || error?.status === 429 || error?.toString().includes('429');
 
             if (isRateLimit && i < maxRetries - 1) {
-                const waitTime = Math.pow(2, i) * 4000; // 4s, 8s, 16s, 32s...
-                console.warn(`[SEO_MKT] Saturación de API (429). Reintento ${i + 1}/${maxRetries} en ${waitTime / 1000}s...`);
+                const waitTime = Math.pow(2, i) * 5000; // Incrementamos ligeramente el cooldown
+                console.warn(`[SEO_MKT] Saturación en ${i < 2 ? '2.0-flash' : '1.5-flash'}. Reintento ${i + 1}/${maxRetries} en ${waitTime / 1000}s...`);
                 await new Promise(resolve => setTimeout(resolve, waitTime));
                 continue;
             }
 
             console.error("[SEO_MKT] Error crítico en Gemini AI:", error);
             throw new Error(isRateLimit
-                ? "El servicio de Google está altamente saturado en este momento. Hemos intentado 5 veces sin éxito. Por favor, espera 60 segundos antes de intentar un nuevo activo."
+                ? "El servicio de Google está temporalmente saturado. Hemos intentado alternar modelos sin éxito. Por favor, reintenta en 60 segundos."
                 : "Error en la conexión con la IA de Google. Verifica tu conexión.");
         }
     }
