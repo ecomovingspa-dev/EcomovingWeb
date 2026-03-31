@@ -7,28 +7,34 @@ const execPromise = util.promisify(exec);
 
 export async function POST() {
     try {
-        // 1. Commit and push EcomovingWeb (Admin)
-        console.log('Syncing EcomovingWeb...');
-        await execPromise('git add . && git commit -m "sync: auto-deploy from admin dashboard" || echo "No changes to commit"');
-        await execPromise('git push origin master');
+        console.log('--- Iniciando Pipeline de Publicación desde Studio ---');
+        
+        // 1. Sincronizar Repositorio Admin (EcomovingWeb)
+        // Guardamos los cambios del diseño actual antes de generar el build estático
+        console.log('Sincronizando cambios técnicos en EcomovingWeb...');
+        await execPromise('git add . && git commit -m "sync: auto-commit from studio publish button" || echo "No technical changes to commit"');
+        await execPromise('git push origin master').catch(err => console.warn('Push Admin omitido o fallido:', err.message));
 
-        // 2. Commit and push ecomoving-site (Public) - if reachable
-        // Note: This assumes the ecomoving-site folder is adjacent and accessible, which might be tricky due to permissions or paths.
-        // However, the user is running this locally on Windows, so we can try absolute paths.
-        // The path is c:\Users\Mario\Desktop\ecomoving-site
-        console.log('Syncing ecomoving-site...');
-        const publicSitePath = 'c:\\Users\\Mario\\Desktop\\ecomoving-site';
-        try {
-            await execPromise(`git -C "${publicSitePath}" add . && git -C "${publicSitePath}" commit -m "sync: auto-deploy from admin dashboard" || echo "No changes to commit"`);
-            await execPromise(`git -C "${publicSitePath}" push origin main`);
-        } catch (err) {
-            console.warn('Could not sync ecomoving-site (public):', err);
-            // We continue, as maybe only Admin changes needed syncing
-        }
+        // 2. Ejecutar Protocolo de Publicación Estática (publish.ps1)
+        // Este script maneja el aislamiento de rutas, npm run build, sync con ecomoving-site y push a producción.
+        const scriptPath = 'c:\\Users\\Mario\\Desktop\\EcomovingWeb\\publish.ps1';
+        console.log(`Ejecutando script oficial: ${scriptPath}`);
+        
+        const { stdout } = await execPromise(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`);
+        console.log('Resultado del script:', stdout);
 
-        return NextResponse.json({ success: true, message: 'Cambios sincronizados con GitHub correctamente.' });
+        return NextResponse.json({ 
+            success: true, 
+            message: 'Sitio publicado con éxito. Se ha sincronizado el repositorio Admin y se ha desplegado la versión estática a Producción.',
+            logs: stdout.split('\n').slice(-5).join('\n') // Últimas líneas del log
+        });
     } catch (error: any) {
-        console.error('Git Sync Error:', error);
-        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+        console.error('Error en el pipeline de publicación:', error);
+        return NextResponse.json({ 
+            success: false, 
+            error: 'Fallo en el proceso de publicación.',
+            details: error.message,
+            stderr: error.stderr
+        }, { status: 500 });
     }
 }
