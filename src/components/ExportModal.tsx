@@ -98,7 +98,7 @@ export default function ExportModal({ isOpen, onClose, project }: ExportModalPro
 
                     <div className="warning-box">
                         <Shield size={16} />
-                        <p>Esta acción filtrará automáticamente todas las herramientas internas de <strong>EcomovingWeb</strong> para asegurar que el sitio público no contenga código administrativo.</p>
+                        <p>Esta acción filtrará automáticamente todas las herramientas internas de <strong>La Fábrica</strong> para asegurar que el sitio público no contenga código administrativo.</p>
                     </div>
                 </div>
 

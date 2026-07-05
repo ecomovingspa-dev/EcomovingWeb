@@ -1,0 +1,7 @@
+{
+  "name": "Generador de Contenido Ecomoving SpA",
+  "description": "Convert images into professional email marketing campaigns with AI-generated subjects and responsive HTML bodies.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

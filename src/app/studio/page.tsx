@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers, Rocket, Send, CloudUpload, Monitor, Tablet, Smartphone } from 'lucide-react';
+import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers, Rocket, Send, CloudUpload, Monitor, Tablet, Smartphone, ShieldCheck, Save } from 'lucide-react';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
 import { useWebContent, SectionContent, GridCell, DynamicSection, WebContent } from '@/hooks/useWebContent';
 import EditorSEO from '@/components/EditorSEO';
@@ -22,9 +22,15 @@ interface Project {
   repo: string;
   path: string;
   lastExport: string;
-  type: 'public' | 'internal';
-  status: 'online' | 'ready';
+  type: 'public' | 'internal' | 'client';
+  status: 'online' | 'ready' | 'draft';
 }
+
+const getVimeoId = (url: string) => {
+  if (!url) return null;
+  const match = url.match(/(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/);
+  return match ? match[1] : null;
+};
 
 const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick, isSelected, previewMode }: {
   block: any,
@@ -77,8 +83,9 @@ const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick
       images = designMode ? [] : [];
   }
   const [spanW, spanH] = finalSpan.split('x').map((n: string) => parseInt(n) || 1);
+  const isVideo = block.type === 'video';
   const isText = block.type === 'text' || block.type === 'both';
-  const isImage = block.type === 'image' || block.type === 'both' || !block.type;
+  const isImage = (block.type === 'image' || block.type === 'both' || !block.type) && !isVideo;
 
   const shadowStyles = {
     none: 'none',
@@ -254,6 +261,49 @@ const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick
         </div>
       )}
 
+      {isVideo && block.videoUrl && (() => {
+        const vimeoId = getVimeoId(block.videoUrl);
+        if (vimeoId) {
+          return (
+            <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+              <iframe
+                src={`https://player.vimeo.com/video/${vimeoId}?autoplay=1&loop=1&muted=1&background=1`}
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  width: '100%',
+                  height: '100%',
+                  transform: 'translate(-50%, -50%) scale(1.35)',
+                  border: 'none',
+                  pointerEvents: 'none'
+                }}
+                allow="autoplay; fullscreen"
+                title="Vimeo Background Video"
+              />
+            </div>
+          );
+        } else {
+          return (
+            <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
+              <video
+                src={block.videoUrl}
+                autoPlay
+                loop
+                muted
+                playsInline
+                style={{
+                  position: 'absolute',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            </div>
+          );
+        }
+      })()}
+
       {/* CONTEXTO EDITORIAL */}
       {(block.blockTitle || block.blockParagraph || block.link) && (
         <div style={{
@@ -346,6 +396,46 @@ const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick
   );
 };
 
+const adjustBlockHeightToImage = (block: any, imageUrl: string, previewMode: string): Promise<number | null> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = imageUrl;
+    img.onload = () => {
+      const aspect = img.naturalWidth / img.naturalHeight;
+      if (!aspect || isNaN(aspect)) {
+        resolve(null);
+        return;
+      }
+
+      let currentSpan = block.span || '12x8';
+      if (previewMode === 'tablet' && block.tSpan) currentSpan = block.tSpan;
+      if (previewMode === 'mobile') {
+        if (block.mSpan) {
+          currentSpan = block.mSpan;
+        } else {
+          const [w, h] = (block.span || '12x8').split('x').map(Number);
+          currentSpan = `48x${h}`;
+        }
+      }
+      
+      const [w, h] = currentSpan.split('x').map(Number);
+      const spanW = w || 12;
+
+      let containerWidth = 1200;
+      if (previewMode === 'tablet') containerWidth = 768;
+      if (previewMode === 'mobile') containerWidth = 375;
+      
+      const colWidth = containerWidth / 48;
+      const blockWidthPx = spanW * colWidth;
+
+      const idealHeightPx = blockWidthPx / aspect;
+      const idealRows = Math.max(1, Math.round(idealHeightPx / 15));
+      resolve(idealRows);
+    };
+    img.onerror = () => resolve(null);
+  });
+};
+
 export default function Home() {
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, {
@@ -356,8 +446,37 @@ export default function Home() {
 
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
 
-  const { content, loading: contentLoading, refetch: refetchContent, updateSection } = useWebContent();
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const { content, loading: contentLoading, refetch: refetchContent, updateSection } = useWebContent(selectedProject?.path || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleSaveLocal = async () => {
+    if (!selectedProject) return;
+    setIsSaving(true);
+    setSaveStatus('idle');
+    try {
+      const res = await fetch('/api/local/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectPath: selectedProject.path,
+          fileName: 'web_content_sync.json',
+          content: content
+        })
+      });
+      if (res.ok) {
+        setSaveStatus('success');
+        refetchContent();
+      } else {
+        setSaveStatus('error');
+      }
+    } catch (e) {
+      setSaveStatus('error');
+    }
+    setIsSaving(false);
+    setTimeout(() => setSaveStatus('idle'), 3000);
+  };
 
   // Tools State
   const [isEditorSEOOpen, setIsEditorSEOOpen] = useState(false);
@@ -423,20 +542,61 @@ export default function Home() {
   }, []);
 
   // ── Inspector: actualizar un bloque y guardar en Supabase ──
-  const handleBlockUpdate = useCallback((blockId: string, updates: Partial<any>) => {
+  const handleBlockUpdate = useCallback(async (blockId: string, updates: Partial<any>) => {
     const source = previewSections || content?.sections;
     if (!Array.isArray(source)) return;
 
+    // ── AUTOMATIC PROPORTIONAL RESIZING ──
+    let finalUpdates = { ...updates };
+    
+    // Buscar el bloque actual en el estado
+    let currentBlock: any = null;
+    source.forEach((s: any) => {
+      if (s.blocks) {
+        const found = s.blocks.find((b: any) => b.id === blockId);
+        if (found) currentBlock = found;
+      }
+    });
+
+    if (currentBlock) {
+      const [prevW, prevH] = (currentBlock.span || '12x8').split('x').map(Number);
+      
+      let manualHeightChange = false;
+      if (updates.span) {
+        const [newW, newH] = updates.span.split('x').map(Number);
+        if (newH !== undefined && newH !== prevH) {
+          manualHeightChange = true;
+        }
+      }
+      
+      const targetImage = updates.image || currentBlock.image;
+      
+      // Solo auto-redimensionar altura si cambia la imagen o cambia el tamaño (ancho/span).
+      // Evitamos reajustar si solo se está moviendo el bloque (cambio de col o row).
+      const isImageUpdating = 'image' in updates;
+      const isSpanUpdating = 'span' in updates;
+
+      if (targetImage && !manualHeightChange && (isImageUpdating || isSpanUpdating)) {
+        const idealRows = await adjustBlockHeightToImage(currentBlock, targetImage, previewMode);
+        if (idealRows) {
+          // Obtener el ancho correspondiente al modo responsive activo
+          const currentSpan = (previewMode === 'tablet' ? currentBlock.tSpan : previewMode === 'mobile' ? currentBlock.mSpan : null) || currentBlock.span || '12x8';
+          const [w] = (updates.span || currentSpan).split('x');
+          finalUpdates.span = `${w}x${idealRows}`;
+        }
+      }
+    }
+
     // ── RESPONSIVE MAPPER ──
-    const mappedUpdates: any = { ...updates };
+    const mappedUpdates: any = { ...finalUpdates };
     if (previewMode === 'tablet') {
-      if ('col' in updates) { mappedUpdates.tCol = updates.col; delete mappedUpdates.col; }
-      if ('row' in updates) { mappedUpdates.tRow = updates.row; delete mappedUpdates.row; }
-      if ('span' in updates) { mappedUpdates.tSpan = updates.span; delete mappedUpdates.span; }
+      if ('col' in finalUpdates) { mappedUpdates.tCol = finalUpdates.col; delete mappedUpdates.col; }
+      if ('row' in finalUpdates) { mappedUpdates.tRow = finalUpdates.row; delete mappedUpdates.row; }
+      if ('span' in finalUpdates) { mappedUpdates.tSpan = finalUpdates.span; delete mappedUpdates.span; }
     } else if (previewMode === 'mobile') {
-      if ('col' in updates) { mappedUpdates.mCol = updates.col; delete mappedUpdates.col; }
-      if ('row' in updates) { mappedUpdates.mRow = updates.row; delete mappedUpdates.row; }
-      if ('span' in updates) { mappedUpdates.mSpan = updates.span; delete mappedUpdates.span; }
+      if ('col' in finalUpdates) { mappedUpdates.mCol = finalUpdates.col; delete mappedUpdates.col; }
+      if ('row' in finalUpdates) { mappedUpdates.mRow = finalUpdates.row; delete mappedUpdates.row; }
+      if ('span' in finalUpdates) { mappedUpdates.mSpan = finalUpdates.span; delete mappedUpdates.span; }
     }
 
     const newSections = source.map((s: any) => {
@@ -596,23 +756,9 @@ export default function Home() {
     const newAssets = { ...assets, [blockId]: url };
     setAssets(newAssets);
 
-    // 2. Persistencia Real en Base de Datos (Supabase)
-    const source = previewSections || content?.sections;
-    if (!Array.isArray(source)) return;
-
-    const newSections = source.map((s: any) => {
-      if (!s.blocks) return s;
-      return { 
-        ...s, 
-        blocks: s.blocks.map((b: any) => 
-          b.id === blockId ? { ...b, image: url, gallery: [url] } : b
-        ) 
-      };
-    });
-
-    setPreviewSections(newSections);
-    await updateSection('sections', newSections);
-    console.log(`[Constructor] Imagen persistida en bloque ${blockId}: ${url}`);
+    // 2. Delegar a handleBlockUpdate para proporcionalidad automática
+    await handleBlockUpdate(blockId, { image: url, gallery: [url] });
+    console.log(`[Constructor] Imagen persistida con redimensión proporcional en bloque ${blockId}: ${url}`);
   };
 
 
@@ -691,6 +837,20 @@ export default function Home() {
             >
               <CloudUpload size={16} className={isDeploying ? 'animate-bounce' : ''} />
               {isDeploying ? 'ENVIANDO...' : 'PUBLISH'}
+            </button>
+
+            <button
+              onClick={handleSaveLocal}
+              className='nav-btn'
+              style={{ 
+                background: isSaving ? 'rgba(0, 212, 189, 0.2)' : saveStatus === 'success' ? 'rgba(0, 212, 189, 0.15)' : 'rgba(255,255,255,0.05)', 
+                color: isSaving || saveStatus === 'success' ? '#00d4bd' : '#aaa', 
+                borderColor: isSaving || saveStatus === 'success' ? '#00d4bd' : 'rgba(255,255,255,0.1)' 
+              }}
+              disabled={isSaving}
+            >
+              <ShieldCheck size={16} />
+              {isSaving ? 'GUARDANDO...' : saveStatus === 'success' ? 'GUARDADO' : 'GUARDAR LOCAL'}
             </button>
 
             <button onClick={() => setIsCatalogHubOpen(true)} className='nav-btn'><Layout size={16} /> HUB</button>
@@ -801,7 +961,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 1 }}
-              style={{ fontSize: '5rem', fontFamily: 'var(--font-heading)', lineHeight: (heroContent as any).titleLineHeight || 1, marginBottom: '20px', textShadow: '0 4px 20px rgba(0,0,0,0.8)' }}
+              style={{ fontSize: (heroContent as any).titleSize || '5rem', fontFamily: 'var(--font-heading)', lineHeight: (heroContent as any).titleLineHeight || 1, marginBottom: '20px', textShadow: '0 4px 20px rgba(0,0,0,0.8)' }}
             >
               {(heroContent as any).title1}
             </motion.h1>
@@ -811,7 +971,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1, delay: 0.5 }}
-              style={{ fontSize: '1.5rem', color: '#ccc', marginBottom: '40px', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,0.9)', lineHeight: (heroContent as any).paragraphLineHeight || 1.4 }}
+              style={{ fontSize: (heroContent as any).paragraphSize || '1.5rem', color: '#ccc', marginBottom: '40px', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,0.9)', lineHeight: (heroContent as any).paragraphLineHeight || 1.4 }}
             >
               {(heroContent as any).paragraph1}
             </motion.p>
@@ -848,61 +1008,6 @@ export default function Home() {
         )}
 
         {/* --- AQUÍ EMPIEZA EL LIENZO INFINITO --- */}
-        {hasBlocks && (masterSection?.title1?.trim() || masterSection?.paragraph1?.trim()) && (
-          <div className="section-header-wrap" style={{ 
-            padding: previewMode === 'mobile' ? '60px 20px 40px 20px' : '100px 60px 60px 60px', 
-            width: '100%', maxWidth: '1400px', margin: '0 auto' 
-          }}>
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
-            >
-              {masterSection.title1?.trim() && (
-                <h2 style={{ 
-                  fontSize: 'clamp(3rem, 6vw, 5rem)', 
-                  fontFamily: 'var(--eco-font-display)', 
-                  letterSpacing: '6px',
-                  marginBottom: '15px',
-                  color: 'white',
-                  position: 'relative',
-                  display: 'inline-block',
-                  textTransform: 'uppercase'
-                }}>
-                  {masterSection.title1}
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    whileInView={{ width: '100%' }}
-                    viewport={{ once: true }}
-                    transition={{ delay: 0.6, duration: 1.2, ease: "circOut" }}
-                    style={{ 
-                      position: 'absolute', 
-                      bottom: '-8px', 
-                      left: 0, 
-                      height: '4px', 
-                      background: 'var(--eco-accent-gradient)',
-                      borderRadius: '2px',
-                      boxShadow: '0 0 15px rgba(0, 229, 160, 0.4)'
-                    }}
-                  />
-                </h2>
-              )}
-              {masterSection.paragraph1?.trim() && (
-                <p style={{ 
-                  fontSize: '1.2rem', 
-                  fontFamily: 'var(--eco-font-heading)', 
-                  color: 'rgba(255,255,255,0.5)',
-                  marginTop: '25px',
-                  letterSpacing: '2px',
-                  fontWeight: 300
-                }}>
-                  {masterSection.paragraph1}
-                </p>
-              )}
-            </motion.div>
-          </div>
-        )}
         <div className="responsive-grid" style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(48, 1fr)',
@@ -913,6 +1018,11 @@ export default function Home() {
           width: '100%',
           maxWidth: '100%',
           backgroundColor: 'var(--eco-bg-primary)',
+          backgroundImage: designMode ? `
+            linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px)
+          ` : 'none',
+          backgroundSize: designMode ? 'calc(100% / 48) 15px' : 'auto',
           overflow: 'visible'
         }}>
 
@@ -973,7 +1083,13 @@ export default function Home() {
         }
       }} selectedBlockId={selectedBlockId} />
       {isBibliotecaOpen && <BibliotecaIA onClose={() => setIsBibliotecaOpen(false)} />}
-      <CatalogHub isOpen={isCatalogHubOpen} onClose={() => setIsCatalogHubOpen(false)} />
+      <CatalogHub
+        isOpen={isCatalogHubOpen}
+        onClose={() => setIsCatalogHubOpen(false)}
+        projectPath={selectedProject?.path || ''}
+        parentContent={content}
+        parentUpdateSection={updateSection}
+      />
       <ExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}

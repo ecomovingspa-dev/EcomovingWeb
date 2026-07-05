@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Rocket, Github, Globe, Settings, ArrowRight, ShieldCheck, Zap, FolderDot, Box, Layers, Cpu } from 'lucide-react';
+import { Rocket, Github, Globe, Settings, ArrowRight, ShieldCheck, Zap, FolderDot, Box, Layers, Cpu, Sparkles, Eye } from 'lucide-react';
 
 interface Project {
     id: string;
@@ -11,8 +11,10 @@ interface Project {
     repo: string;
     path: string;
     lastExport: string;
-    type: 'public' | 'internal';
-    status: 'online' | 'ready';
+    type: 'public' | 'internal' | 'client';
+    status: 'online' | 'ready' | 'draft';
+    stitchProjectId?: string;
+    clientName?: string;
 }
 
 const PROJECTS: Project[] = [
@@ -20,23 +22,34 @@ const PROJECTS: Project[] = [
         id: 'ecomoving-public',
         name: 'Ecomoving | Sitio Público',
         repo: 'ecomovingspa-dev/ecomoving-site',
-        path: 'c:/Users/Mario/Desktop/ecomoving-site',
+        path: 'c:/Users/Mario/Desktop/EcomovingWeb',
         lastExport: 'Hace 20 minutos',
         type: 'public',
         status: 'online'
     },
     {
         id: 'ecomoving-admin',
-        name: 'Ecomoving | Admin Control Hub',
-        repo: 'ecomovingspa-dev/EcomovingWeb',
-        path: 'c:/Users/Mario/Desktop/EcomovingWeb',
+        name: 'La Fábrica | Control Hub Maestro',
+        repo: 'ecomovingspa-dev/la-fabrica',
+        path: 'c:/Users/Mario/Desktop/LaFabrica',
         lastExport: 'Original',
         type: 'internal',
         status: 'ready'
+    },
+    {
+        id: 'tiny-puertecillo',
+        name: 'Tiny Puertecillo SpA',
+        repo: 'ecomovingspa-dev/tiny-puertecillo',
+        path: 'c:/Users/Mario/Desktop/TinyPuertecillo',
+        lastExport: 'En Revisión',
+        type: 'client',
+        status: 'draft',
+        stitchProjectId: '4290871646268560517',
+        clientName: 'Tiny Puertecillo SpA'
     }
 ];
 
-export default function ProjectLauncher({ onSelect }: { onSelect: (project: Project) => void }) {
+export default function ProjectLauncher({ onSelect, onStitchPreview }: { onSelect: (project: Project) => void; onStitchPreview?: (project: Project) => void }) {
     const [hovered, setHovered] = useState<string | null>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
@@ -82,13 +95,16 @@ export default function ProjectLauncher({ onSelect }: { onSelect: (project: Proj
                             whileHover={{ y: -10 }}
                         >
                             <div className="card-glow" />
-                            <div className="project-type">
-                                {project.type === 'public' ? <Globe size={14} /> : <ShieldCheck size={14} />}
+                            <div className="project-type" style={project.type === 'client' ? { color: '#d4a843' } : {}}>
+                                {project.type === 'public' ? <Globe size={14} /> : project.type === 'internal' ? <ShieldCheck size={14} /> : <Layers size={14} />}
                                 {project.type.toUpperCase()}
+                                {project.stitchProjectId && (
+                                    <span className="stitch-badge"><Sparkles size={10} style={{ marginRight: 3 }} />STITCH</span>
+                                )}
                             </div>
 
                             <div className="project-icon">
-                                {project.type === 'public' ? <Zap size={32} /> : <Rocket size={32} />}
+                                {project.type === 'public' ? <Zap size={32} /> : project.type === 'internal' ? <Rocket size={32} /> : <Layers size={32} />}
                             </div>
 
                             <div className="project-info">
@@ -110,6 +126,16 @@ export default function ProjectLauncher({ onSelect }: { onSelect: (project: Proj
                                     </span>
                                 </div>
                             </div>
+
+                            {project.stitchProjectId && onStitchPreview && (
+                                <button
+                                    className="btn-stitch-preview"
+                                    onClick={(e) => { e.stopPropagation(); onStitchPreview(project); }}
+                                >
+                                    <Eye size={13} style={{ marginRight: 6 }} />
+                                    PREVIEW STITCH
+                                </button>
+                            )}
 
                             <div className="card-action">
                                 <span>ABRIR ENTORNO</span>
@@ -347,7 +373,45 @@ export default function ProjectLauncher({ onSelect }: { onSelect: (project: Proj
                 }
                 .status-badge.online { background: rgba(0, 212, 189, 0.1); color: var(--accent-turquoise); border: 1px solid rgba(0, 212, 189, 0.2); }
                 .status-badge.ready { background: rgba(255, 255, 255, 0.05); color: #aaa; border: 1px solid rgba(255, 255, 255, 0.1); }
+                .status-badge.draft { background: rgba(212, 168, 67, 0.1); color: #d4a843; border: 1px solid rgba(212, 168, 67, 0.25); }
+
+                .stitch-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    background: rgba(100, 180, 255, 0.1);
+                    color: #64b4ff;
+                    border: 1px solid rgba(100, 180, 255, 0.2);
+                    border-radius: 3px;
+                    font-size: 8px;
+                    font-weight: 900;
+                    padding: 2px 6px;
+                    letter-spacing: 1px;
+                    margin-left: 8px;
+                }
+
+                .btn-stitch-preview {
+                    display: flex;
+                    align-items: center;
+                    background: rgba(100, 180, 255, 0.05);
+                    color: #64b4ff;
+                    border: 1px solid rgba(100, 180, 255, 0.2);
+                    border-radius: 6px;
+                    font-size: 9px;
+                    font-weight: 800;
+                    padding: 8px 14px;
+                    letter-spacing: 2px;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                    width: 100%;
+                    justify-content: center;
+                }
+                .btn-stitch-preview:hover {
+                    background: rgba(100, 180, 255, 0.15);
+                    border-color: rgba(100, 180, 255, 0.5);
+                    color: #a8d4ff;
+                }
                 
+
                 .card-action {
                     display: flex;
                     align-items: center;

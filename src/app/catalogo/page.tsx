@@ -62,7 +62,9 @@ export default function CatalogPage() {
             </nav>
 
             <div style={{ paddingTop: '60px' }}>
-                <ProductCatalog adminMode={isAdmin} externalSearch={search} />
+                <React.Suspense fallback={<div style={{ color: 'white', textAlign: 'center', padding: '50px' }}>Cargando catálogo...</div>}>
+                    <ProductCatalog adminMode={isAdmin} externalSearch={search} />
+                </React.Suspense>
             </div>
 
             <CatalogLeadMagnet />

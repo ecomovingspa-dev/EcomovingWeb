@@ -128,7 +128,82 @@ export const getMarketingHTMLTemplate = (subject: string, p1: string, p2: string
 
 
 
-export const generateMarketingAI = async (
+// --- UTILIDAD: Retraso de cortesía ---
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+import { callOllama } from "./ollama";
+
+export interface SEOContent {
+    seo_title: string;
+    seo_description: string;
+    seo_keywords: string;
+}
+
+/**
+ * MOTOR PRINCIPAL: Generación de SEO mediante Google AI Studio.
+ * FALLBACK: Ollama local (Gemma 3) si falla por cuota (429).
+ */
+export const generateSEOAI = async (context: string): Promise<SEOContent> => {
+    const prompt = `
+Eres el Módulo de Inteligencia Semántica (@seo_mkt) de Ecomoving SpA.
+TAREA: Genera metadatos SEO premium (Título, Descripción y Keywords) basados en la siguiente información.
+
+INPUT:
+${context}
+
+REGLAS @seo_mkt:
+1. TÍTULO (seo_title): Máximo 60 caracteres. Impactante, B2B, sin nombres de marca.
+2. DESCRIPCIÓN (seo_description): Máximo 160 caracteres. Persuasiva, orientada a conversión ejecutiva.
+3. KEYWORDS (seo_keywords): 5-8 términos de cola larga separados por coma.
+
+RESPONDE EXCLUSIVAMENTE EN FORMATO JSON:
+{
+  "seo_title": "...",
+  "seo_description": "...",
+  "seo_keywords": "..."
+}
+`;
+
+    try {
+        if (!genAI) throw new Error("API KEY MISSING");
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        const parsed = JSON.parse(text.replace(/```json/g, "").replace(/```/g, "").trim());
+        
+        return {
+            seo_title: parsed.seo_title || parsed.title || '',
+            seo_description: parsed.seo_description || parsed.description || '',
+            seo_keywords: parsed.seo_keywords || parsed.keywords || ''
+        };
+    } catch (error: any) {
+        const isRateLimit = error?.message?.includes('429') || error?.status === 429 || error?.toString().includes('429');
+        
+        if (isRateLimit) {
+            console.warn("[SEO_FALLBACK] Gemini 429. Activando Salvavidas: Ollama local...");
+            try {
+                const parsed = await callOllama(prompt, { format: 'json', model: 'gemma3:4b' });
+                return {
+                    seo_title: parsed.seo_title || parsed.title || '',
+                    seo_description: parsed.seo_description || parsed.description || '',
+                    seo_keywords: parsed.seo_keywords || parsed.keywords || ''
+                };
+            } catch (ollamaError) {
+                console.error("[OLLAMA_CRITICAL] Fallo total en salvavidas:", ollamaError);
+            }
+        }
+
+        console.error("[GEMINI_SEO_ERROR] Fallo en motor principal:", error);
+        return { 
+            seo_title: 'Contenido Premium Ecomoving', 
+            seo_description: 'Ecomoving ofrece soluciones de merchandising sustentable de alta gama.', 
+            seo_keywords: 'merchandising, sustentable, corporativo' 
+        };
+    }
+};
+
+
+export const generateMarketingAI = async (
     imageSource: string,
     context: string = "",
     ctaLink: string = "https://www.ecomoving.cl",
@@ -215,8 +290,8 @@ PART2: Esta solución avanzada mantiene la temperatura ideal durante jornadas ex
 
     for (let i = 0; i < maxRetries; i++) {
         try {
-            // PROTOCOLO @seo_mkt: Intentar con 2.0-flash, fallback a 1.5-flash en reintentos por 429
-            const modelName = i < 2 ? "gemini-2.0-flash" : "gemini-1.5-flash";
+            // Prioridad 1.5 Pro: 2.0 -> 1.5-pro -> 1.5-flash
+            const modelName = i === 0 ? "gemini-2.0-flash" : i === 1 ? "gemini-1.5-pro" : "gemini-1.5-flash";
             const model = genAI.getGenerativeModel({ model: modelName });
 
             const result = await model.generateContent([
@@ -253,37 +328,50 @@ PART2: Esta solución avanzada mantiene la temperatura ideal durante jornadas ex
             lastError = error;
             const isRateLimit = error?.message?.includes('429') || error?.status === 429 || error?.toString().includes('429');
 
-            if (isRateLimit && i < maxRetries - 1) {
-                const waitTime = Math.pow(2, i) * 5000; // Incrementamos ligeramente el cooldown
-                console.warn(`[SEO_MKT] Saturación en ${i < 2 ? '2.0-flash' : '1.5-flash'}. Reintento ${i + 1}/${maxRetries} en ${waitTime / 1000}s...`);
-                await new Promise(resolve => setTimeout(resolve, waitTime));
-                continue;
+            if (isRateLimit) {
+                if (i < maxRetries - 1) {
+                    console.warn(`[SEO_MKT] Saturación. Aplicando delay de cortesía (3s) antes de reitento ${i + 1}...`);
+                    await sleep(3000);
+                    continue;
+                } else {
+                    // ÚLTIMO REINTENTO FALLIDO - ACTIVAR SALVAVIDAS OLLAMA
+                    console.warn("[SEO_MKT] Límite superado. Activando Salvavidas: Ollama local...");
+                    try {
+                        const ollamaPrompt = `${prompt}\n\nTOMA EN CUENTA EL CONTEXTO: ${context}`;
+                        const response = await callOllama(ollamaPrompt, { model: 'gemma3:4b' });
+                        
+                        // Parseo simplificado del texto libre de Ollama si no devuelve formato exacto
+                        return {
+                            subject: "Solución de Impacto",
+                            part1: "ELEGANCIA CORPORATIVA",
+                            part2: response.slice(0, 500),
+                            html: getMarketingHTMLTemplate("Solución de Impacto", "ELEGANCIA CORPORATIVA", response.slice(0, 500), ctaLink, ctaText),
+                            ctaLink,
+                            ctaText
+                        };
+                    } catch (ollamaError) {
+                        console.error("[OLLAMA_MKT_ERROR] Fallo total en salvavidas:", ollamaError);
+                    }
+                }
             }
 
             console.error("[SEO_MKT] Error crítico en Gemini AI:", error);
             throw new Error(isRateLimit
-                ? "El servicio de Google está temporalmente saturado. Hemos intentado alternar modelos sin éxito. Por favor, reintenta en 60 segundos."
+                ? "El servicio de Google está temporalmente saturado. Hemos intentado alternar modelos y el salvavidas Ollama. Por favor, reintenta en 60 segundos."
                 : "Error en la conexión con la IA de Google. Verifica tu conexión.");
         }
     }
     throw lastError;
 };
 
+/**
+ * MOTOR PRINCIPAL: Generación de contenido Web mediante Google AI Studio.
+ * FALLBACK: Ollama local (Gemma 3) si falla por cuota (429).
+ */
 export const generateWebAI = async (img: string, ctx: string): Promise<WebSectionContent> => {
-    if (!genAI) throw new Error("API KEY MISSING");
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
-    const responseImg = await fetch(img);
-    const blob = await responseImg.blob();
-    const base64Data = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-        reader.readAsDataURL(blob);
-    });
-
     const prompt = `
 Eres el Arquitecto de Contenido Web (@constructor) de Ecomoving.
-Genera contenido SEO premium para una sección de la página web basada en este producto.
+Genera contenido SEO premium para una sección de la página web basada en el contexto proporcionado.
 
 INPUT:
 ${ctx}
@@ -296,33 +384,287 @@ SALIDA REQUERIDA (JSON ESTRICTO):
   "paragraph2": "Subtexto descriptivo refinado"
 }
 
-REGLA CRÍTICA: Bajo ninguna circunstancia uses el nombre del producto proporcionado en el INPUT en el texto final. Si el INPUT dice "Producto: SILLY", tú escribe "La solución de hidratación definitiva".
+REGLA CRÍTICA: Bajo ninguna circunstancia uses el nombre del producto proporcionado en el INPUT en el texto final.
 `;
 
-    const maxRetries = 5;
-    for (let i = 0; i < maxRetries; i++) {
-        try {
-            const result = await model.generateContent([
-                { text: prompt },
-                { inlineData: { data: base64Data, mimeType: blob.type || "image/jpeg" } }
-            ]);
-            const text = result.response.text();
-            const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            return JSON.parse(cleanText);
-        } catch (error: any) {
-            const isRateLimit = error?.message?.includes('429') || error?.status === 429;
-            if (i < maxRetries - 1 && isRateLimit) {
-                const waitTime = Math.pow(2, i) * 4000;
-                await new Promise(r => setTimeout(r, waitTime));
-                continue;
+    try {
+        if (!genAI) throw new Error("API KEY MISSING");
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        const parsed = JSON.parse(text.replace(/```json/g, "").replace(/```/g, "").trim());
+        
+        return {
+            title1: parsed.title1 || '',
+            paragraph1: parsed.paragraph1 || '',
+            title2: parsed.title2 || '',
+            paragraph2: parsed.paragraph2 || ''
+        };
+    } catch (error: any) {
+        const isRateLimit = error?.message?.includes('429') || error?.status === 429 || error?.toString().includes('429');
+        
+        if (isRateLimit) {
+            console.warn("[WEB_FALLBACK] Gemini 429. Activando Salvavidas: Ollama local...");
+            try {
+                const parsed = await callOllama(prompt, { format: 'json', model: 'gemma3:4b' });
+                return {
+                    title1: parsed.title1 || '',
+                    paragraph1: parsed.paragraph1 || '',
+                    title2: parsed.title2 || '',
+                    paragraph2: parsed.paragraph2 || ''
+                };
+            } catch (ollamaError) {
+                console.error("[OLLAMA_WEB_ERROR] Error en salvavidas local:", ollamaError);
             }
-            console.error("[CONSTRUCTOR] Error en Web AI:", error);
-            throw new Error(isRateLimit
-                ? "Saturación persistente en los servidores de Google. Intentos agotados (5/5). Reintenta en 1 minuto."
-                : "Saturación de IA. Por favor intenta en unos segundos.");
         }
+
+        console.error("[GEMINI_WEB_ERROR] Error en motor principal:", error);
+        return { 
+            title1: 'Solución Corporativa Premium', 
+            paragraph1: 'Diseño y funcionalidad para elevar la identidad de su empresa.', 
+            title2: 'Calidad Sin Compromiso', 
+            paragraph2: 'Nuestros estándares aseguran durabilidad e impacto visual.' 
+        };
     }
-    return { title1: '', paragraph1: '', title2: '', paragraph2: '' };
 };
 
+
 export const generateSEOFilenameAI = async (img: string) => "optimized-filename";
+
+/**
+ * MOTOR DE EMAILS (@seo_mkt): Generación de narrativa de email de alta fidelidad.
+ * FALLBACK: Ollama local (Gemma 3) si falla por cuota (429).
+ */
+export const generateEmailAI = async (technical_specs: string[], productName: string): Promise<any> => {
+    const prompt = `
+Eres el Módulo de Inteligencia Semántica @seo_mkt de Ecomoving.
+PRODUCT NAME: ${productName}
+PRIMARY INPUT (Specs):
+${technical_specs.join('\n')}
+
+REGLAS: ÚNICO PÁRRAFO FLUIDO de 4 líneas. Tono ejecutivo.
+ASUNTO: Abre-puertas B2B (máx 6 palabras).
+PART1: TITULAR SECUNDARIO MAYÚSCULAS.
+
+ESTRUCTURA JSON:
+{
+  "email_subject": "...",
+  "part1": "...",
+  "email_body": "..."
+}
+`;
+
+    try {
+        if (!genAI) throw new Error("API KEY MISSING");
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        return JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+    } catch (error: any) {
+        const isRateLimit = error?.message?.includes('429') || error?.status === 429;
+        if (isRateLimit) {
+            console.warn("[EMAIL_FALLBACK] Gemini 429. Activando Salvavidas: Ollama local...");
+            try {
+                return await callOllama(prompt, { format: 'json', model: 'gemma3:4b' });
+            } catch (ollamaError) {
+                console.error("[OLLAMA_EMAIL_ERROR] Fallo total en salvavidas:", ollamaError);
+            }
+        }
+        throw error;
+    }
+};
+
+/**
+ * MOTOR DE BANNERS (@seo_mkt): Generación de copys para Hero Banner 16:9.
+ * FALLBACK: Ollama local (Gemma 3) si falla por cuota (429).
+ */
+export const generateBannerAI = async (technical_specs: string[]): Promise<any> => {
+    const prompt = `
+REGLAS HERO BANNER: 16:9. Extremadamente breve.
+INPUT SPECS: ${technical_specs.join('\n')}
+
+ESTRUCTURA JSON:
+{
+  "tag": "ETIQUETA (2 pal)",
+  "slogan": "TITULAR (5 pal)",
+  "sub_slogan": "SUBTITULAR (8 pal)",
+  "cta": "BOTÓN (2 pal)"
+}
+`;
+
+    try {
+        if (!genAI) throw new Error("API KEY MISSING");
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        return JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+    } catch (error: any) {
+        const isRateLimit = error?.message?.includes('429') || error?.status === 429;
+        if (isRateLimit) {
+            console.warn("[BANNER_FALLBACK] Gemini 429. Activando Salvavidas: Ollama local...");
+            try {
+                return await callOllama(prompt, { format: 'json', model: 'gemma3:4b' });
+            } catch (ollamaError) {
+                console.error("[OLLAMA_BANNER_ERROR] Fallo total en salvavidas:", ollamaError);
+            }
+        }
+        throw error;
+    }
+};
+
+/**
+ * MOTOR DE CONSULTAS SEO (@seo_mkt): Análisis, mejora y optimización.
+ * FALLBACK: Ollama local (Gemma 3) si falla por cuota (429).
+ */
+export const generateSEOQueryAI = async (prompt: string): Promise<any> => {
+    try {
+        if (!genAI) throw new Error("API KEY MISSING");
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        return JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+    } catch (error: any) {
+        const isRateLimit = error?.message?.includes('429') || error?.status === 429;
+        if (isRateLimit) {
+            console.warn("[SEO_QUERY_FALLBACK] Gemini 429. Activando Salvavidas: Ollama local...");
+            try {
+                return await callOllama(prompt, { format: 'json', model: 'gemma3:4b' });
+            } catch (ollamaError) {
+                console.error("[OLLAMA_SEO_QUERY_ERROR] Fallo total en salvavidas:", ollamaError);
+            }
+        }
+        throw error;
+    }
+};
+
+// --- NUEVO MOTOR DE ESTUDIO FOTOGRÁFICO IA (REPLICADO 1:1 DE GOOGLE STUDIO) ---
+import { GoogleGenAI } from "@google/genai";
+
+export const DEFAULT_IMAGE_PROMPT = `Fotografía de producto comercial profesional del [PRODUCTO_REAL] en todo su esplendor. Fotografía publicitaria de catálogo de lujo. Composición impecable siguiendo la regla de los tercios. Óptica: Lente Teleobjetivo de 85mm (Cero distorsión, perspectiva frontal plana), apertura f/8 para máxima nitidez. Iluminación: Estudio profesional con softboxes, luz de contorno (rim light), luz natural a 5500K con sombras de contacto suaves sobre la superficie. Entorno: Centro de mesa en oficina biofílica minimalista o espacio de Gerencia. Superficie: Madera de Nogal Premium o Piedra Neutra. Fondo: Entorno laboral ejecutivo con desenfoque suave (bokeh) y vegetación sutil. Restricciones: SIN accesorios, SIN computadoras, SIN distracciones. Ocupar todas las imagenes adjuntas con la restricción de no deformar o transformar el tamaño de los productos sin alucinar cambiando cualquier aspecto o caracteristicas de los productos. Protagonista: Foco absoluto en la textura del material (Acero Inoxidable/Acabado Mate). Estilo: Lujo Minimalista, Autoridad B2B de Alta Gama, Resolución 8k, Calidad comercial premium.`;
+
+export const DEFAULT_ENHANCE_ONLY_PROMPT = `Retoque digital profesional de alta gama. Optimización de micro-contrastes, corrección de color cinematográfica y perfeccionamiento de la iluminación global. MANTÉN EL FONDO ORIGINAL EXACTAMENTE COMO ESTÁ. Integra los productos mediante sombras de contacto precisas y reflejos coherentes con el entorno. Acabado de revista de diseño.`;
+
+export const generateStudioImage = async (
+    base64Images: string[], 
+    customPrompt: string, 
+    includePeople: boolean = false,
+    aspectRatio: string = '16:9',
+    keepBackground: boolean = false
+): Promise<string> => {
+    if (!API_KEY) throw new Error("API KEY MISSING");
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+    const imageParts = base64Images.map(base64 => {
+        const data = base64.split(',')[1] || base64;
+        return {
+            inlineData: {
+                data: data,
+                mimeType: 'image/jpeg'
+            }
+        };
+    });
+
+    let finalPrompt = "";
+    
+    if (keepBackground) {
+        finalPrompt = `ACTÚA COMO DIRECTOR DE ARTE DE POSPRODUCCIÓN: ${customPrompt || DEFAULT_ENHANCE_ONLY_PROMPT}. 
+        INSTRUCCIONES CRÍTICAS: 
+        1. PROHIBIDO MODIFICAR EL FONDO ORIGINAL.
+        2. Integra los nuevos productos en el fondo proporcionado.
+        3. La iluminación de los productos debe igualar exactamente la temperatura de color y dirección de luz del fondo.
+        4. Genera oclusión ambiental y sombras proyectadas realistas sobre las superficies existentes.`;
+    } else {
+        const peopleInstruction = includePeople 
+            ? "Ambiente lifestyle de lujo con modelos humanos interactuando naturalmente con los productos. Los modelos deben vestir acorde al escenario y mostrar una actitud aspiracional."
+            : "Bodegón publicitario de producto puro. Sin presencia humana. Enfoque en materiales, texturas y diseño industrial.";
+
+        finalPrompt = `ACTÚA COMO UN EXPERTO DIRECTOR DE ARTE Y FOTÓGRAFO PUBLICITARIO: ${customPrompt || DEFAULT_IMAGE_PROMPT}. 
+        ${peopleInstruction}
+        REGLAS DE ORO PARA EL RENDER:
+        - Composición de alta gama con enfoque en el producto.
+        - Iluminación cinematográfica coherente con el escenario.
+        - Utiliza una lente de 85mm f/1.8 para un desenfoque de fondo (bokeh) elegante si aplica.
+        - Los objetos deben estar perfectamente integrados, con sombras de contacto y oclusión ambiental realistas.
+        - MÁXIMA RESOLUCIÓN 4K, nitidez extrema, sin artefactos, calidad de impresión profesional.`;
+    }
+
+    try {
+        const result = await (ai.models as any).generateContent({
+            model: 'gemini-2.0-flash', 
+            contents: [
+                {
+                    parts: [
+                        ...imageParts,
+                        { text: finalPrompt }
+                    ]
+                }
+            ],
+            config: {
+                imageConfig: {
+                    aspectRatio: aspectRatio
+                }
+            }
+        } as any);
+
+        const parts = (result as any).candidates?.[0]?.content?.parts || [];
+        for (const part of parts) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+        }
+        throw new Error("No se devolvió una imagen en la respuesta.");
+    } catch (e: any) {
+        console.error("Error en generateStudioImage:", e);
+        throw e;
+    }
+};
+
+export const generateStudioCopy = async (base64Image: string, context: string) => {
+    if (!API_KEY) throw new Error("API KEY MISSING");
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
+    
+    const prompt = `
+      ACTÚA COMO UN DIRECTOR CREATIVO DE UNA AGENCIA DE PUBLICIDAD DE ÉLITE.
+      CONTEXTO ESTRATÉGICO: "${context}"
+      Responde ÚNICAMENTE en formato JSON con claves: "title", "p1", "p2".
+    `;
+
+    try {
+        const result = await (ai.models as any).generateContent({
+          model: "gemini-2.0-flash",
+          contents: [
+            {
+              parts: [
+                { inlineData: { mimeType: "image/png", data: base64Image.split(',')[1] || base64Image } },
+                { text: prompt }
+              ]
+            }
+          ],
+          config: { responseMimeType: "application/json", temperature: 1.0 }
+        });
+
+        const text = (result as any).response?.text() || (result as any).candidates?.[0]?.content?.parts?.[0]?.text || "";
+        return JSON.parse(text.replace(/```json/g, "").replace(/```/g, "").trim());
+    } catch (error: any) {
+        const isRateLimit = error?.message?.includes('429') || error?.status === 429 || error?.toString().includes('429');
+        if (isRateLimit) {
+            console.warn("[STUDIO_COPY_FALLBACK] Gemini 429. Activando Salvavidas: Ollama local...");
+            try {
+                // Como es una imagen, mandamos el prompt como texto a Ollama
+                const ollamaOutput = await callOllama(prompt, { format: 'json', model: 'gemma3:4b' });
+                return {
+                    title: ollamaOutput.title || "Visión Corporativa",
+                    p1: ollamaOutput.p1 || "ELEGANCIA Y RENDIMIENTO",
+                    p2: ollamaOutput.p2 || "Solución premium diseñada para entornos ejecutivos de alta exigencia."
+                };
+            } catch (ollamaError) {
+                console.error("[OLLAMA_STUDIO_ERROR] Fallo total en salvavidas:", ollamaError);
+            }
+        }
+        
+        console.error("[GEMINI_STUDIO_COPY_ERROR]:", error);
+        return { title: 'Ecomoving Studio', p1: 'DISEÑO PREMIUM', p2: 'Contenido generado localmente ante interrupción del servicio.' };
+    }
+};
+
+

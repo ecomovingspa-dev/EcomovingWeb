@@ -46,7 +46,7 @@ export default function BlockInspector({
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ── Drag-to-move ──────────────────────────────────────────────────────────
-    const PANEL_W = 380;
+    const PANEL_W = 500; // Aumentado 30% proporcionalmente
     const PANEL_H_APPROX = 600;
     const [pos, setPos] = useState<{ x: number; y: number }>(() => ({
         x: typeof window !== 'undefined' ? window.innerWidth - PANEL_W - 8 : 800,
@@ -396,8 +396,20 @@ export default function BlockInspector({
                                 </div>
                                 {/* Info */}
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#ddd', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {b.label || 'BLOQUE'}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div style={{ fontSize: '11px', fontWeight: 700, color: '#ddd', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                                            {b.label || 'BLOQUE'}
+                                        </div>
+                                        <input 
+                                            type="color" 
+                                            value={b.bgColor || '#111111'} 
+                                            onChange={e => {
+                                                e.stopPropagation();
+                                                onUpdate(b.id, { bgColor: e.target.value });
+                                            }}
+                                            onClick={e => e.stopPropagation()}
+                                            style={{ width: '12px', height: '12px', border: 'none', background: 'none', borderRadius: '50%', cursor: 'pointer', padding: 0, outline: '1px solid rgba(255,255,255,0.1)' }}
+                                        />
                                     </div>
                                     <div style={{ display: 'flex', gap: '4px', marginTop: '3px' }}>
                                         <span style={chipStyle('#00d4bd')}>F:{b.row ?? '?'}</span>
@@ -449,8 +461,20 @@ export default function BlockInspector({
                                 {block.zIndex && block.zIndex > 1 && <span style={chipStyle('#efb810')}>Z:{block.zIndex}</span>}
                             </div>
                         </div>
+                        <button onClick={onAddBlock} title="Añadir nuevo bloque" style={{
+                            background: 'rgba(0,212,189,0.08)', border: '1px solid rgba(0,212,189,0.2)', color: '#00d4bd', cursor: 'pointer',
+                            padding: '6px', borderRadius: '6px', display: 'flex', transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,189,0.15)'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(0,212,189,0.08)'}
+                        >
+                            <Plus size={14} />
+                        </button>
                         <button onClick={() => { if (confirm('¿Eliminar este bloque?')) onDelete(block.id); }}
-                            style={{ background: 'rgba(255,68,68,0.08)', border: '1px solid rgba(255,68,68,0.2)', color: '#ff4444', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex' }}>
+                            style={{ background: 'rgba(255,68,68,0.08)', border: '1px solid rgba(255,68,68,0.2)', color: '#ff4444', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', transition: 'all 0.2s' }}
+                            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,68,68,0.15)'}
+                            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,68,68,0.08)'}
+                        >
                             <Trash2 size={14} />
                         </button>
                         <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', padding: '4px' }}>
@@ -483,6 +507,34 @@ export default function BlockInspector({
                         {/* ── TAB POSICIÓN ── */}
                         {activeTab === 'layout' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+                                {/* PALETA DE MARCA RÁPIDA */}
+                                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', marginBottom: '5px' }}>
+                                    <div style={{ fontSize: '8px', color: '#555', fontWeight: 900, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '1px' }}>ADN COLOR SYSTEM</div>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        {[
+                                            { name: 'Turquesa', color: '#00d4bd' },
+                                            { name: 'Oro', color: '#d4af37' },
+                                            { name: 'Carbón', color: '#080808' },
+                                            { name: 'Oscuro', color: '#111111' },
+                                            { name: 'Grip', color: '#1a1a1a' },
+                                            { name: 'White', color: '#ffffff' }
+                                        ].map(brandColor => (
+                                            <button
+                                                key={brandColor.color}
+                                                onClick={() => update({ bgColor: brandColor.color })}
+                                                title={brandColor.name}
+                                                style={{
+                                                    width: '20px', height: '20px', borderRadius: '50%', 
+                                                    backgroundColor: brandColor.color, 
+                                                    border: block.bgColor === brandColor.color ? '2px solid #00d4bd' : '1px solid rgba(255,255,255,0.1)',
+                                                    cursor: 'pointer', transition: 'transform 0.2s'
+                                                }}
+                                                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
+                                                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
                                 <Row label="COLUMNA (1-48)">
                                     <input type="number" value={block.col || 1} onChange={e => update({ col: parseInt(e.target.value) || 1 })} style={inputStyle} />
                                 </Row>
@@ -625,7 +677,7 @@ export default function BlockInspector({
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px' }}>
                                     <div><div style={labelStyle}>TIPO</div>
                                         <select value={block.type || 'image'} onChange={e => update({ type: e.target.value as any })} style={selectStyle}>
-                                            <option value="image">Imagen</option><option value="text">Texto</option><option value="both">Ambos</option>
+                                            <option value="image">Imagen</option><option value="text">Texto</option><option value="both">Ambos</option><option value="video">Video</option>
                                         </select>
                                     </div>
                                     <div><div style={labelStyle}>FONDO</div>
@@ -633,214 +685,219 @@ export default function BlockInspector({
                                     </div>
                                 </div>
 
+                                {block.type === 'video' && (
+                                    <Row label="URL DEL VIDEO (MP4 o Vimeo)">
+                                        <input type="text" value={block.videoUrl || ''} onChange={e => update({ videoUrl: e.target.value })} placeholder="https://vimeo.com/930646527 o URL .mp4..." style={inputStyle} />
+                                    </Row>
+                                )}
+
                                 {block.type !== 'text' && (
                                     <>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <div style={{ fontSize: '9px', color: '#efb810', fontWeight: 900, textTransform: 'uppercase' }}>GALERÍA</div>
-                                            <button
-                                                onClick={() => {
-                                                    const next = !pickerOpen;
-                                                    setPickerOpen(next);
-                                                    if (!next) {
-                                                        setPickerQuery('');
-                                                        setPickerImages([]);
-                                                    }
-                                                }}
-                                                style={{ fontSize: '9px', background: 'rgba(0,212,189,0.08)', border: '1px solid #00d4bd', color: '#00d4bd', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                                            >
-                                                <ImageIcon size={10} /> {pickerOpen ? 'CERRAR' : 'BIBLIOTECA'}
-                                            </button>
-                                        </div>
+                                        {block.type !== 'video' && (
+                                            <>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div style={{ fontSize: '9px', color: '#efb810', fontWeight: 900, textTransform: 'uppercase' }}>GALERÍA</div>
+                                                    <button
+                                                        onClick={() => {
+                                                            const next = !pickerOpen;
+                                                            setPickerOpen(next);
+                                                            if (!next) {
+                                                                setPickerQuery('');
+                                                                setPickerImages([]);
+                                                            }
+                                                        }}
+                                                        style={{ fontSize: '9px', background: 'rgba(0,212,189,0.08)', border: '1px solid #00d4bd', color: '#00d4bd', padding: '3px 8px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                                    >
+                                                        <ImageIcon size={10} /> {pickerOpen ? 'CERRAR' : 'BIBLIOTECA'}
+                                                    </button>
+                                                </div>
 
-                                        <AnimatePresence>
-                                            {pickerOpen && (
-                                                <motion.div
-                                                    initial={{ height: 0, opacity: 0 }}
-                                                    animate={{ height: 'auto', opacity: 1 }}
-                                                    exit={{ height: 0, opacity: 0 }}
-                                                    style={{ overflow: 'hidden' }}
-                                                >
-                                                    <div style={{ background: '#050505', borderRadius: '8px', border: '1px solid #1a1a1a', overflow: 'hidden' }}>
-                                                        {/* ─ Pestañas de la Galería ─ */}
-                                                        <div style={{ padding: '4px', borderBottom: '1px solid #111', display: 'flex', gap: '4px' }}>
-                                                            <button onClick={() => setPickerTab('productos')} style={{ flex: 1, background: pickerTab === 'productos' ? '#151515' : 'transparent', color: pickerTab === 'productos' ? '#00d4bd' : '#666', border: 'none', borderRadius: '4px', fontSize: '9px', fontWeight: 900, padding: '8px 0', cursor: 'pointer', letterSpacing: '1px' }}>PRODUCTOS</button>
-                                                            <button onClick={() => setPickerTab('grilla')} style={{ flex: 1, background: pickerTab === 'grilla' ? '#151515' : 'transparent', color: pickerTab === 'grilla' ? '#00d4bd' : '#666', border: 'none', borderRadius: '4px', fontSize: '9px', fontWeight: 900, padding: '8px 0', cursor: 'pointer', letterSpacing: '1px' }}>GRILLA (INSUMOS)</button>
-                                                        </div>
-
-                                                        {pickerTab === 'productos' ? (
-                                                            <>
-                                                                {/* ─ Buscador ─ */}
-                                                                <div style={{ padding: '8px', borderBottom: '1px solid #111', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                    <span style={{ fontSize: '11px', flexShrink: 0 }}>🔍</span>
-                                                                    <input
-                                                                        type="text"
-                                                                        value={pickerQuery}
-                                                                        onChange={e => handlePickerQueryChange(e.target.value)}
-                                                                        placeholder="Buscar en catálogo... (ej: mochila)"
-                                                                        autoFocus
-                                                                        style={{
-                                                                            flex: 1, background: 'transparent', border: 'none',
-                                                                            color: '#ddd', fontSize: '11px', outline: 'none',
-                                                                            fontFamily: 'var(--font-body, sans-serif)'
-                                                                        }}
-                                                                    />
-                                                                    {pickerQuery && (
-                                                                        <button
-                                                                            onClick={() => handlePickerQueryChange('')}
-                                                                            style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '12px', padding: '0 2px', lineHeight: 1 }}
-                                                                        >✕</button>
-                                                                    )}
+                                                <AnimatePresence>
+                                                    {pickerOpen && (
+                                                        <motion.div
+                                                            initial={{ height: 0, opacity: 0 }}
+                                                            animate={{ height: 'auto', opacity: 1 }}
+                                                            exit={{ height: 0, opacity: 0 }}
+                                                            style={{ overflow: 'hidden' }}
+                                                        >
+                                                            <div style={{ background: '#050505', borderRadius: '8px', border: '1px solid #1a1a1a', overflow: 'hidden' }}>
+                                                                {/* ─ Pestañas de la Galería ─ */}
+                                                                <div style={{ padding: '4px', borderBottom: '1px solid #111', display: 'flex', gap: '4px' }}>
+                                                                    <button onClick={() => setPickerTab('productos')} style={{ flex: 1, background: pickerTab === 'productos' ? '#151515' : 'transparent', color: pickerTab === 'productos' ? '#00d4bd' : '#666', border: 'none', borderRadius: '4px', fontSize: '9px', fontWeight: 900, padding: '8px 0', cursor: 'pointer', letterSpacing: '1px' }}>PRODUCTOS</button>
+                                                                    <button onClick={() => setPickerTab('grilla')} style={{ flex: 1, background: pickerTab === 'grilla' ? '#151515' : 'transparent', color: pickerTab === 'grilla' ? '#00d4bd' : '#666', border: 'none', borderRadius: '4px', fontSize: '9px', fontWeight: 900, padding: '8px 0', cursor: 'pointer', letterSpacing: '1px' }}>GRILLA (INSUMOS)</button>
                                                                 </div>
 
-                                                                {/* ─ Contenido Productos ─ */}
-                                                                <div style={{ height: 200, overflowY: 'auto', padding: '7px' }} className="custom-scroll">
-                                                                    {!pickerQuery.trim() ? (
-                                                                        /* Estado inicial: sin query */
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '8px', color: '#333' }}>
-                                                                            <span style={{ fontSize: '22px' }}>🗂️</span>
-                                                                            <span style={{ fontSize: '10px', textAlign: 'center', lineHeight: 1.5, maxWidth: '160px' }}>
-                                                                                Escribe el nombre o categoría del producto
-                                                                            </span>
-                                                                        </div>
-                                                                    ) : pickerLoading ? (
-                                                                        /* Buscando... */
-                                                                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                                                                            <Loader2 size={22} style={{ color: '#00d4bd', animation: 'spin 1s linear infinite' }} />
-                                                                        </div>
-                                                                    ) : pickerImages.length === 0 ? (
-                                                                        /* Sin resultados */
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '6px', color: '#444' }}>
-                                                                            <span style={{ fontSize: '20px' }}>🔎</span>
-                                                                            <span style={{ fontSize: '10px', textAlign: 'center' }}>
-                                                                                Sin resultados para «{pickerQuery}»
-                                                                            </span>
-                                                                        </div>
-                                                                    ) : (
-                                                                        /* Grid de resultados */
-                                                                        <>
-                                                                            <div style={{ fontSize: '8px', color: '#444', marginBottom: '5px', fontFamily: 'monospace' }}>
-                                                                                {pickerImages.length} imagen{pickerImages.length !== 1 ? 'es' : ''} encontrada{pickerImages.length !== 1 ? 's' : ''}
-                                                                            </div>
-                                                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
-                                                                                {pickerImages.map((img, i) => (
-                                                                                    <div
-                                                                                        key={i}
-                                                                                        onClick={() => {
-                                                                                            update({ gallery: [...(block.gallery || []), img.url] });
-                                                                                            // No cerramos para poder agregar varias
-                                                                                        }}
-                                                                                        title={img.name}
-                                                                                        style={{
-                                                                                            aspectRatio: '1/1', borderRadius: '5px',
-                                                                                            overflow: 'hidden', cursor: 'pointer',
-                                                                                            border: '1px solid #1a1a1a',
-                                                                                            transition: 'border-color 0.15s, transform 0.15s'
-                                                                                        }}
-                                                                                        onMouseEnter={e => {
-                                                                                            (e.currentTarget as HTMLElement).style.borderColor = '#00d4bd';
-                                                                                            (e.currentTarget as HTMLElement).style.transform = 'scale(1.05)';
-                                                                                        }}
-                                                                                        onMouseLeave={e => {
-                                                                                            (e.currentTarget as HTMLElement).style.borderColor = '#1a1a1a';
-                                                                                            (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                                                                                        }}
-                                                                                    >
-                                                                                        <img
-                                                                                            src={img.url}
-                                                                                            alt={img.name}
-                                                                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                                                                            onError={e => (e.target as HTMLImageElement).style.display = 'none'}
-                                                                                        />
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            </>
-                                                        ) : (
-                                                            /* ─ Contenido Grilla (Insumos) ─ */
-                                                            <div style={{ height: 200, overflowY: 'auto', padding: '7px' }} className="custom-scroll">
-                                                                {loadingGrilla ? (
-                                                                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                                                                        <Loader2 size={22} style={{ color: '#00d4bd', animation: 'spin 1s linear infinite' }} />
-                                                                    </div>
-                                                                ) : grillaImages.length === 0 ? (
-                                                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '6px', color: '#444' }}>
-                                                                        <span style={{ fontSize: '20px' }}>📦</span>
-                                                                        <span style={{ fontSize: '10px', textAlign: 'center' }}>No hay imágenes en la carpeta Grilla</span>
-                                                                    </div>
-                                                                ) : (
+                                                                {pickerTab === 'productos' ? (
                                                                     <>
-                                                                        <div style={{ fontSize: '8px', color: '#444', marginBottom: '5px', fontFamily: 'monospace' }}>
-                                                                            {grillaImages.length} imágenes listas
+                                                                        {/* ─ Buscador ─ */}
+                                                                        <div style={{ padding: '8px', borderBottom: '1px solid #111', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <span style={{ fontSize: '11px', flexShrink: 0 }}>🔍</span>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={pickerQuery}
+                                                                                onChange={e => handlePickerQueryChange(e.target.value)}
+                                                                                placeholder="Buscar en catálogo... (ej: mochila)"
+                                                                                autoFocus
+                                                                                style={{
+                                                                                    flex: 1, background: 'transparent', border: 'none',
+                                                                                    color: '#ddd', fontSize: '11px', outline: 'none',
+                                                                                    fontFamily: 'var(--font-body, sans-serif)'
+                                                                                }}
+                                                                            />
+                                                                            {pickerQuery && (
+                                                                                <button
+                                                                                    onClick={() => handlePickerQueryChange('')}
+                                                                                    style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '12px', padding: '0 2px', lineHeight: 1 }}
+                                                                                >✕</button>
+                                                                            )}
                                                                         </div>
-                                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
-                                                                            {grillaImages.map((img, i) => (
-                                                                                <div
-                                                                                    key={i}
-                                                                                    onClick={() => update({ gallery: [...(block.gallery || []), img.url] })}
-                                                                                    title={img.name}
-                                                                                    style={{
-                                                                                        aspectRatio: '1/1', borderRadius: '5px',
-                                                                                        overflow: 'hidden', cursor: 'pointer',
-                                                                                        border: '1px solid #1a1a1a', background: '#111',
-                                                                                        transition: 'border-color 0.15s, transform 0.15s'
-                                                                                    }}
-                                                                                    onMouseEnter={e => {
-                                                                                        (e.currentTarget as HTMLElement).style.borderColor = '#00d4bd';
-                                                                                        (e.currentTarget as HTMLElement).style.transform = 'scale(1.05)';
-                                                                                    }}
-                                                                                    onMouseLeave={e => {
-                                                                                        (e.currentTarget as HTMLElement).style.borderColor = '#1a1a1a';
-                                                                                        (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                                                                                    }}
-                                                                                >
-                                                                                    <img
-                                                                                        src={img.url}
-                                                                                        alt={img.name}
-                                                                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                                                                        onError={e => (e.target as HTMLImageElement).style.display = 'none'}
-                                                                                    />
+
+                                                                        {/* ─ Contenido Productos ─ */}
+                                                                        <div style={{ height: 200, overflowY: 'auto', padding: '7px' }} className="custom-scroll">
+                                                                            {!pickerQuery.trim() ? (
+                                                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '8px', color: '#333' }}>
+                                                                                    <span style={{ fontSize: '22px' }}>🗂️</span>
+                                                                                    <span style={{ fontSize: '10px', textAlign: 'center', lineHeight: 1.5, maxWidth: '160px' }}>
+                                                                                        Escribe el nombre o categoría del producto
+                                                                                    </span>
                                                                                 </div>
-                                                                            ))}
+                                                                            ) : pickerLoading ? (
+                                                                                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                                                                                    <Loader2 size={22} style={{ color: '#00d4bd', animation: 'spin 1s linear infinite' }} />
+                                                                                </div>
+                                                                            ) : pickerImages.length === 0 ? (
+                                                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '6px', color: '#444' }}>
+                                                                                    <span style={{ fontSize: '20px' }}>🔎</span>
+                                                                                    <span style={{ fontSize: '10px', textAlign: 'center' }}>
+                                                                                        Sin resultados para «{pickerQuery}»
+                                                                                    </span>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <div style={{ fontSize: '8px', color: '#444', marginBottom: '5px', fontFamily: 'monospace' }}>
+                                                                                        {pickerImages.length} imagen{pickerImages.length !== 1 ? 'es' : ''} encontrada{pickerImages.length !== 1 ? 's' : ''}
+                                                                                    </div>
+                                                                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
+                                                                                        {pickerImages.map((img, i) => (
+                                                                                            <div
+                                                                                                key={i}
+                                                                                                onClick={() => {
+                                                                                                    update({ gallery: [...(block.gallery || []), img.url] });
+                                                                                                }}
+                                                                                                title={img.name}
+                                                                                                style={{
+                                                                                                    aspectRatio: '1/1', borderRadius: '5px',
+                                                                                                    overflow: 'hidden', cursor: 'pointer',
+                                                                                                    border: '1px solid #1a1a1a',
+                                                                                                    transition: 'border-color 0.15s, transform 0.15s'
+                                                                                                }}
+                                                                                                onMouseEnter={e => {
+                                                                                                    (e.currentTarget as HTMLElement).style.borderColor = '#00d4bd';
+                                                                                                    (e.currentTarget as HTMLElement).style.transform = 'scale(1.05)';
+                                                                                                }}
+                                                                                                onMouseLeave={e => {
+                                                                                                    (e.currentTarget as HTMLElement).style.borderColor = '#1a1a1a';
+                                                                                                    (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+                                                                                                }}
+                                                                                            >
+                                                                                                <img
+                                                                                                    src={img.url}
+                                                                                                    alt={img.name}
+                                                                                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                                                                    onError={e => (e.target as HTMLImageElement).style.display = 'none'}
+                                                                                                />
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                </>
+                                                                            )}
                                                                         </div>
                                                                     </>
+                                                                ) : (
+                                                                    /* ─ Contenido Grilla (Insumos) ─ */
+                                                                    <div style={{ height: 200, overflowY: 'auto', padding: '7px' }} className="custom-scroll">
+                                                                        {loadingGrilla ? (
+                                                                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                                                                                <Loader2 size={22} style={{ color: '#00d4bd', animation: 'spin 1s linear infinite' }} />
+                                                                            </div>
+                                                                        ) : grillaImages.length === 0 ? (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '6px', color: '#444' }}>
+                                                                                <span style={{ fontSize: '20px' }}>📦</span>
+                                                                                <span style={{ fontSize: '10px', textAlign: 'center' }}>No hay imágenes en la carpeta Grilla</span>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <>
+                                                                                <div style={{ fontSize: '8px', color: '#444', marginBottom: '5px', fontFamily: 'monospace' }}>
+                                                                                    {grillaImages.length} imágenes listas
+                                                                                </div>
+                                                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
+                                                                                    {grillaImages.map((img, i) => (
+                                                                                        <div
+                                                                                            key={i}
+                                                                                            onClick={() => update({ gallery: [...(block.gallery || []), img.url] })}
+                                                                                            title={img.name}
+                                                                                            style={{
+                                                                                                aspectRatio: '1/1', borderRadius: '5px',
+                                                                                                overflow: 'hidden', cursor: 'pointer',
+                                                                                                border: '1px solid #1a1a1a', background: '#111',
+                                                                                                transition: 'border-color 0.15s, transform 0.15s'
+                                                                                            }}
+                                                                                            onMouseEnter={e => {
+                                                                                                (e.currentTarget as HTMLElement).style.borderColor = '#00d4bd';
+                                                                                                (e.currentTarget as HTMLElement).style.transform = 'scale(1.05)';
+                                                                                            }}
+                                                                                            onMouseLeave={e => {
+                                                                                                (e.currentTarget as HTMLElement).style.borderColor = '#1a1a1a';
+                                                                                                (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+                                                                                            }}
+                                                                                        >
+                                                                                            <img
+                                                                                                src={img.url}
+                                                                                                alt={img.name}
+                                                                                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                                                                onError={e => (e.target as HTMLImageElement).style.display = 'none'}
+                                                                                            />
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
                                                                 )}
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
 
-                                        <div><div style={labelStyle}>ANIMACIÓN SLIDESHOW</div>
-                                            <select value={block.galleryAnimation || 'fade'} onChange={e => update({ galleryAnimation: e.target.value as any })} style={selectStyle}>
-                                                <option value="fade">Fade</option>
-                                                <option value="crossfade">Crossfade (Estático)</option>
-                                                <option value="slide-h">Deslizar →</option><option value="slide-v">Deslizar ↓</option><option value="zoom">Zoom</option><option value="none">Sin animación</option>
-                                                <option value="full-carousel">Carrusel Completo (Full)</option>
-                                                <option value="peek">⟵ Carrusel Peek (Apple/Tesla) ⟶</option>
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <div style={labelStyle}>URLs DE GALERÍA</div>
-                                            <textarea value={(block.gallery || []).join('\n')} onChange={e => update({ gallery: e.target.value.split('\n').filter(Boolean) })}
-                                                rows={4} style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '9px', color: '#00d4bd', resize: 'vertical' }} placeholder="Una URL por línea..." />
-                                            {(block.gallery || []).length > 0 && (
-                                                <div style={{ display: 'flex', gap: '4px', marginTop: '5px', flexWrap: 'wrap' }}>
-                                                    {block.gallery!.slice(0, 5).map((url, i) => (
-                                                        <div key={i} style={{ position: 'relative', width: '36px', height: '36px', borderRadius: '4px', overflow: 'hidden', border: '1px solid #222' }}>
-                                                            <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" onError={e => (e.target as HTMLImageElement).style.display = 'none'} />
-                                                            <button onClick={() => update({ gallery: (block.gallery || []).filter((_, idx) => idx !== i) })}
-                                                                style={{ position: 'absolute', top: 0, right: 0, background: 'rgba(255,0,0,0.8)', border: 'none', color: 'white', cursor: 'pointer', padding: '1px 3px', fontSize: '8px', lineHeight: 1 }}>✕</button>
-                                                        </div>
-                                                    ))}
-                                                    {block.gallery!.length > 5 && <div style={{ width: '36px', height: '36px', border: '1px solid #222', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', color: '#555' }}>+{block.gallery!.length - 5}</div>}
+                                                <div><div style={labelStyle}>ANIMACIÓN SLIDESHOW</div>
+                                                    <select value={block.galleryAnimation || 'fade'} onChange={e => update({ galleryAnimation: e.target.value as any })} style={selectStyle}>
+                                                        <option value="fade">Fade</option>
+                                                        <option value="crossfade">Crossfade (Estático)</option>
+                                                        <option value="slide-h">Deslizar →</option><option value="slide-v">Deslizar ↓</option><option value="zoom">Zoom</option><option value="none">Sin animación</option>
+                                                        <option value="full-carousel">Carrusel Completo (Full)</option>
+                                                        <option value="peek">⟵ Carrusel Peek (Apple/Tesla) ⟶</option>
+                                                    </select>
                                                 </div>
-                                            )}
-                                        </div>
+
+                                                <div>
+                                                    <div style={labelStyle}>URLs DE GALERÍA</div>
+                                                    <textarea value={(block.gallery || []).join('\n')} onChange={e => update({ gallery: e.target.value.split('\n').filter(Boolean) })}
+                                                        rows={4} style={{ ...inputStyle, fontFamily: 'monospace', fontSize: '9px', color: '#00d4bd', resize: 'vertical' }} placeholder="Una URL por línea..." />
+                                                    {(block.gallery || []).length > 0 && (
+                                                        <div style={{ display: 'flex', gap: '4px', marginTop: '5px', flexWrap: 'wrap' }}>
+                                                            {block.gallery!.slice(0, 5).map((url, i) => (
+                                                                <div key={i} style={{ position: 'relative', width: '36px', height: '36px', borderRadius: '4px', overflow: 'hidden', border: '1px solid #222' }}>
+                                                                    <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" onError={e => (e.target as HTMLImageElement).style.display = 'none'} />
+                                                                    <button onClick={() => update({ gallery: (block.gallery || []).filter((_, idx) => idx !== i) })}
+                                                                        style={{ position: 'absolute', top: 0, right: 0, background: 'rgba(255,0,0,0.8)', border: 'none', color: 'white', cursor: 'pointer', padding: '1px 3px', fontSize: '8px', lineHeight: 1 }}>✕</button>
+                                                                </div>
+                                                            ))}
+                                                            {block.gallery!.length > 5 && <div style={{ width: '36px', height: '36px', border: '1px solid #222', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', color: '#555' }}>+{block.gallery!.length - 5}</div>}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </>
+                                        )}
 
                                         <div style={{ borderTop: '1px solid #111', paddingTop: '10px' }}>
                                             <div style={{ fontSize: '9px', color: '#efb810', fontWeight: 900, letterSpacing: '1px', marginBottom: '8px' }}>📐 TRANSFORMACIÓN</div>

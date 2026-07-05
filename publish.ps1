@@ -1,8 +1,10 @@
 # Publish Script for Ecomoving
 $ErrorActionPreference = "Continue" # Don't stop on minor revert errors
+$env:NODE_TLS_REJECT_UNAUTHORIZED="0" # Bypass SSL issues downloading Google Fonts during build
 
-$root = "C:\Users\Mario\Desktop\EcomovingWeb"
+$root = "C:\Users\Mario\Desktop\LaFabrica"
 $site = "C:\Users\Mario\Desktop\ecomoving-site"
+$localEdit = "C:\Users\Mario\Desktop\EcomovingWeb"
 $out = "$root\out"
 
 Write-Host "--- Iniciando Proceso de Publicación (Auditado) ---"
@@ -27,15 +29,25 @@ if (Test-Path "$root\src\app\sitemap.ts") { Move-Item "$root\src\app\sitemap.ts"
 try {
     # 2. Construcción Estática
     Write-Host "Ejecutando Build Estático..."
+    # 1.5 Sincronizar archivo de contenido local
+    Write-Host "Sincronizando web_content_sync.json para la compilación..."
+    if (Test-Path "$localEdit\web_content_sync.json") {
+        Copy-Item "$localEdit\web_content_sync.json" "$root\public\web_content_sync.json" -Force
+    }
+
     Set-Location $root
     npm run build
 
     # 3. Transferencia a Producción
     Write-Host "Sincronizando archivos con ecomoving-site..."
     if (Test-Path $out) {
-        # Limpiar sitio antes de copiar para asegurar paridad absoluta
-        Get-ChildItem $site -Exclude ".git" | Remove-Item -Recurse -Force
+        # Limpiar sitio antes de copiar para asegurar paridad absoluta (conservando git y el json si estuviera)
+        Get-ChildItem $site -Exclude ".git","web_content_sync.json" | Remove-Item -Recurse -Force
         xcopy /e /i /y "$out\*" "$site\"
+        # Copiar web_content_sync.json también a la raíz de ecomoving-site para que se suba a GitHub
+        if (Test-Path "$localEdit\web_content_sync.json") {
+            Copy-Item "$localEdit\web_content_sync.json" "$site\web_content_sync.json" -Force
+        }
     } else {
         throw "Error: No se encontró la carpeta de salida 'out'."
     }

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, Trash2, Download, Layers, Loader2, Save, Image as ImageIcon, Check, Star, RefreshCw, Plus, Sparkles, Send, Globe, RotateCw, FlipHorizontal, Maximize2, Minimize2, Square, RectangleHorizontal, RectangleVertical, ChevronRight, Cloud, FolderOpen, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { generateMarketingAI, generateWebAI, generateSEOFilenameAI, MarketingContent, WebSectionContent, getMarketingHTMLTemplate } from '@/lib/gemini';
-import { useWebContent } from '@/hooks/useWebContent';
+import { useWebContent, WebContent } from '@/hooks/useWebContent';
 import { fetchDriveItems, DriveItem } from '@/services/driveService';
 import MarketingBentoFactory from './MarketingBentoFactory';
 
@@ -30,15 +30,24 @@ interface PendingProduct {
 interface CatalogHubProps {
     isOpen: boolean;
     onClose: () => void;
+    projectPath?: string;
+    parentContent?: WebContent;
+    parentUpdateSection?: (section: keyof WebContent, newContentData: any) => Promise<boolean>;
 }
 
-export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
+export default function CatalogHub({
+    isOpen,
+    onClose,
+    projectPath,
+    parentContent,
+    parentUpdateSection
+}: CatalogHubProps) {
     const [pendingProducts, setPendingProducts] = useState<PendingProduct[]>([]);
     const [selectedProduct, setSelectedProduct] = useState<PendingProduct | null>(null);
 
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const [customCategories, setCustomCategories] = useState<string[]>(['ECOLÓGICOS', 'BOTELLAS, MUGS Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS']);
+    const [customCategories, setCustomCategories] = useState<string[]>(['01. HIDRATACIÓN', '02. ESPACIO DE TRABAJO', '03. MOVIMIENTO URBANO', '04. TECH INNOVATION', '05. GOURMET EXPERIENCE', 'PREMIUM']);
     const [isAddingCategory, setIsAddingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
 
@@ -111,7 +120,9 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         cta_text: 'EXPLORAR CATÁLOGO',
         cta_link: '/catalogo',
         text_align_h: 'center',
-        text_align_v: 'center'
+        text_align_v: 'center',
+        titleSize: '5.0rem',
+        paragraphSize: '1.5rem'
     });
 
     // AI CONTENT FACTORY STATE
@@ -120,7 +131,9 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     const [generatedWeb, setGeneratedWeb] = useState<WebSectionContent | null>(null);
     const [aiStatus, setAiStatus] = useState('');
 
-    const { content, updateSection } = useWebContent(); // Using sections from here
+    const localWebContent = useWebContent(projectPath);
+    const content = parentContent || localWebContent.content;
+    const updateSection = parentUpdateSection || localWebContent.updateSection;
 
     // Ensure we select a valid section on load
     useEffect(() => {
@@ -167,8 +180,13 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
             setIsSearchingMatches(true);
             try {
                 const resp = await fetch(`/api/local-folder?search=${encodeURIComponent(sku)}`);
-                const data = await resp.json();
-                setSmartMatches(data.items || []);
+                const contentType = resp.headers.get('content-type');
+                if (resp.ok && contentType && contentType.includes('application/json')) {
+                    const data = await resp.json();
+                    setSmartMatches(data.items || []);
+                } else {
+                    setSmartMatches([]);
+                }
             } catch (err) {
                 console.error('Error in smart match:', err);
                 setSmartMatches([]);
@@ -185,10 +203,26 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
     // Actualizar estados locales de categorías para filtrado
     const [selectedCategory, setSelectedCategory] = useState<string>('TODAS');
     const [isExpandingCategories, setIsExpandingCategories] = useState(false);
-    const specialCategories = ['ECOLÓGICOS', 'BOTELLAS, MUGS Y TAZAS', 'CUADERNOS, LIBRETAS Y MEMO SET', 'MOCHILAS, BOLSOS Y MORRALES', 'BOLÍGRAFOS', 'ACCESORIOS'];
+    const specialCategories = ['01. HIDRATACIÓN', '02. ESPACIO DE TRABAJO', '03. MOVIMIENTO URBANO', '04. TECH INNOVATION', '05. GOURMET EXPERIENCE', 'PREMIUM'];
 
 
 
+
+    const normalizeCategory = (cat: string | undefined): string => {
+        if (!cat) return 'SIN CATEGORÍA';
+        const upper = cat.trim().toUpperCase();
+        
+        // Reverse Map: Old -> New Standard
+        const reverseMap: Record<string, string> = {
+            'BOTELLAS': '01. HIDRATACIÓN', 'MUGS': '01. HIDRATACIÓN', 'TERMOS': '01. HIDRATACIÓN', 'HIDRATACIÓN': '01. HIDRATACIÓN',
+            'ECOLÓGICOS': '02. ESPACIO DE TRABAJO', 'OFICINA': '02. ESPACIO DE TRABAJO', 'ESCRITORIO': '02. ESPACIO DE TRABAJO', 'MESA': '02. ESPACIO DE TRABAJO',
+            'MOCHILAS': '03. MOVIMIENTO URBANO', 'BOLSOS': '03. MOVIMIENTO URBANO', 'VIAJE': '03. MOVIMIENTO URBANO', 'URBANO': '03. MOVIMIENTO URBANO',
+            'TECNOLOGÍA': '04. TECH INNOVATION', 'CARGADORES': '04. TECH INNOVATION', 'POWERBANK': '04. TECH INNOVATION', 'TECH': '04. TECH INNOVATION',
+            'GOURMET': '05. GOURMET EXPERIENCE', 'COCINA': '05. GOURMET EXPERIENCE', 'VINO': '05. GOURMET EXPERIENCE', 'GOURMET EXPERIENCE': '05. GOURMET EXPERIENCE'
+        };
+
+        return reverseMap[upper] || upper;
+    };
 
     const wholesalers = ['CATÁLOGO'];
 
@@ -776,7 +810,9 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                     cta_text: content.hero.cta_text || 'EXPLORAR CATÁLOGO',
                     cta_link: content.hero.cta_link || '/catalogo',
                     text_align_h: content.hero.text_align_h || 'center',
-                    text_align_v: content.hero.text_align_v || 'center'
+                    text_align_v: content.hero.text_align_v || 'center',
+                    titleSize: content.hero.titleSize || '5.0rem',
+                    paragraphSize: content.hero.paragraphSize || '1.5rem'
                 });
             }
         }
@@ -1205,9 +1241,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
             // Protocolo @constructor: Usar el hook oficial para sincronización reactiva inmediata
             const success = await updateSection('hero', {
-                [heroKey]: activeImage,
-                // Solo actualizamos el título si hay un producto seleccionado
-                ...(slideIndex === 0 && selectedProduct ? { title1: (selectedProduct.seo_title || selectedProduct.nombre).toUpperCase() } : {})
+                [heroKey]: activeImage
             });
 
             if (success) {
@@ -1225,6 +1259,59 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
         }
     };
 
+    const handleDirectSlideUpload = async (e: React.ChangeEvent<HTMLInputElement>, slideIndex: number) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        setIsSaving(true);
+        try {
+            const file = files[0];
+            // 1. Optimizar imagen para Hero
+            const { blob } = await optimizeImage(file, 'hero', {
+                zoom: 1,
+                rotation: 0,
+                flipX: false,
+                aspectRatio: 'original',
+                offsetX: 0,
+                offsetY: 0
+            });
+
+            // 2. Subir a Supabase Storage
+            const timestamp = Date.now();
+            const fileName = `INSUMO-DIRECT-HERO-${timestamp}-slide-${slideIndex + 1}.webp`;
+            const filePath = `hero/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('imagenes-marketing')
+                .upload(filePath, blob, { contentType: 'image/webp' });
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('imagenes-marketing')
+                .getPublicUrl(filePath);
+
+            // 3. Guardar en configuración Hero (sin generación de textos)
+            const heroKey = slideIndex === 0 ? 'background_image' : `background_image_${slideIndex + 1}`;
+
+            const success = await updateSection('hero', {
+                [heroKey]: publicUrl
+            });
+
+            if (success) {
+                alert(`¡Slide Hero ${slideIndex + 1} actualizado con éxito!`);
+            } else {
+                throw new Error('No se pudo actualizar la sección Hero');
+            }
+        } catch (err) {
+            console.error('Error direct slide upload:', err);
+            alert('Error al subir e integrar la imagen para el Slide');
+        } finally {
+            setIsSaving(false);
+            e.target.value = ''; // Limpiar el input de archivos
+        }
+    };
+
     const handleSaveHeroTexts = async () => {
         setIsSaving(true);
         try {
@@ -1235,7 +1322,9 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 cta_text: heroForm.cta_text,
                 cta_link: heroForm.cta_link,
                 text_align_h: heroForm.text_align_h,
-                text_align_v: heroForm.text_align_v
+                text_align_v: heroForm.text_align_v,
+                titleSize: heroForm.titleSize,
+                paragraphSize: heroForm.paragraphSize
             });
             if (success) {
                 alert('¡Textos y layout del Hero guardados con éxito!');
@@ -1247,41 +1336,6 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
             alert('Error al guardar configuración del Hero');
         } finally {
             setIsSaving(false);
-        }
-    };
-
-    const handleGenerateHeroAI = async () => {
-        setIsGeneratingAI(true);
-        setAiStatus('⚡ Conectando con IA @seo_mkt...');
-        try {
-            const productContext = selectedProduct ? selectedProduct.nombre : 'Merchandising Sustentable Premium';
-            const descContext = selectedProduct ? selectedProduct.descripcion : 'Soluciones ecológicas corporativas para fidelizar clientes.';
-
-            const response = await fetch('/api/generate-seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    technical_specs: [productContext, descContext]
-                })
-            });
-
-            if (!response.ok) throw new Error('Error IA');
-            const resultData = await response.json();
-            const aiData = resultData.data || {};
-
-            setHeroForm(prev => ({
-                ...prev,
-                title1: aiData.seo_title ? aiData.seo_title.toUpperCase() : "SOLUCIONES ECO",
-                paragraph1: aiData.seo_description || "Descubre el merchandising del futuro."
-            }));
-
-            alert('¡Textos SEO-Hero generados con éxito! Puedes ajustar las cajas antes de guardar.');
-        } catch (err) {
-            console.error(err);
-            alert('Error regenerando textos.');
-        } finally {
-            setIsGeneratingAI(false);
-            setAiStatus('');
         }
     };
 
@@ -1584,12 +1638,34 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
     const filteredProducts = pendingProducts.filter(p => {
         const searchLower = search.toLowerCase();
+        const pCat = (p.category || '').toUpperCase();
+        
         const matchesSearch = p.nombre.toLowerCase().includes(searchLower) ||
             p.sku_externo.toLowerCase().includes(searchLower) ||
-            p.category?.toLowerCase().includes(searchLower);
+            pCat.includes(searchLower);
 
         if (selectedCategory !== 'TODAS') {
-            return matchesSearch && p.category?.toUpperCase() === selectedCategory.toUpperCase();
+            const fCat = selectedCategory.toUpperCase();
+            
+            // Filtro especial para Premium (está en el array de specialCategories)
+            if (fCat === 'PREMIUM') {
+                return matchesSearch && (p.is_premium || pCat.includes('PREMIUM'));
+            }
+
+            // Mapeo inteligente para retrocompatibilidad (Igual que en ProductCatalog)
+            const categoryMap: Record<string, string[]> = {
+                '01. HIDRATACIÓN': ['HIDRATACIÓN', 'HIDRATACION', 'BOTELLAS', 'MUG', 'TAZAS', 'TERMO', 'BOTELLAS, MUGS Y TAZAS'],
+                '02. ESPACIO DE TRABAJO': ['ESPACIO DE TRABAJO', 'TRABAJO', 'OFICINA', 'LIBRETAS', 'CUADERNOS', 'BOLÍGRAFOS', 'BOLIGRAFOS', 'LAPIZ', 'CUADERNOS, LIBRETAS Y MEMO SET'],
+                '03. MOVIMIENTO URBANO': ['MOVIMIENTO URBANO', 'URBANO', 'MOCHILAS', 'BOLSOS', 'MORRALES', 'MOCHILAS, BOLSOS Y MORRALES'],
+                '04. TECH INNOVATION': ['TECH INNOVATION', 'TECH', 'TECNOLOGIA', 'ECOLOGICOS', 'ECO', 'TECNOLOGÍA'],
+                '05. GOURMET EXPERIENCE': ['GOURMET EXPERIENCE', 'GOURMET', 'HOGAR', 'TIEMPO LIBRE', 'TABLAS', 'GOURMET / HOGAR'],
+                'ACCESORIOS': ['ACCESORIOS', 'RELOJ', 'LLAVERO', 'HERRAMIENTAS']
+            };
+
+            const aliases = categoryMap[fCat] || [fCat];
+            const matchesCategory = aliases.some(a => pCat.includes(a));
+            
+            return matchesSearch && matchesCategory;
         }
 
         return matchesSearch;
@@ -1635,6 +1711,12 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ technical_specs: selectedProduct.technical_specs })
             });
+
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error("Respuesta del servidor no válida (No es JSON)");
+            }
+
             const result = await response.json();
             if (result.success && result.data) {
                 handleUpdateProduct({
@@ -1643,7 +1725,13 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                     seo_description: result.data.seo_description || selectedProduct.seo_description
                 });
             } else {
-                alert(`Error al generar SEO: ${result.error || "Formato inválido"}\n\nDetalles: ${result.details || "Sin detalles"}`);
+                const isQuotaError = result.details?.toLowerCase().includes('quota') || result.details?.toLowerCase().includes('too many requests') || result.error?.toLowerCase().includes('quota');
+                
+                if (isQuotaError) {
+                    alert("⚠️ Límite de IA excedido (Quota Exceeded).\n\nEl motor @seo_mkt ha alcanzado su límite temporal de solicitudes. Por favor, espera un minuto antes de intentarlo de nuevo o completa los campos manualmente.");
+                } else {
+                    alert(`Error al generar SEO: ${result.error || "Formato inválido"}\n\nDetalles: ${result.details || "Sin detalles"}`);
+                }
             }
         } catch (e) {
             alert("Error de conexión al generar SEO.");
@@ -2130,7 +2218,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                             >
                                                                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                                                     <span style={{ fontSize: '11px', color: 'white', fontWeight: '700' }}>{p.nombre}</span>
-                                                                                    <span style={{ fontSize: '9px', color: '#666' }}>{p.sku_externo}</span>
+                                                                                    <span style={{ fontSize: '9px', color: '#666' }}>{p.sku_externo} - {normalizeCategory(p.category)}</span>
                                                                                 </div>
                                                                                 {updatedProductIds.has(p.id) && <Check size={12} color="var(--accent-turquoise)" />}
                                                                             </div>
@@ -2209,7 +2297,33 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
 
                         {activeTab === 'catalog' && (
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <div style={{ padding: '0 60px 18px 60px', backgroundColor: 'rgba(0,0,0,0.2)', display: 'flex', gap: '40px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                {/* Categorías Filter Hub */}
+                                <div style={{ padding: '20px 60px', display: 'flex', gap: '15px', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.03)', background: 'rgba(0,0,0,0.1)' }}>
+                                    {['TODAS', ...specialCategories].map(cat => (
+                                        <button
+                                            key={cat}
+                                            onClick={() => setSelectedCategory(cat)}
+                                            style={{
+                                                padding: '10px 20px',
+                                                borderRadius: '3px',
+                                                fontSize: '10px',
+                                                fontWeight: '900',
+                                                letterSpacing: '1px',
+                                                cursor: 'pointer',
+                                                textTransform: 'uppercase',
+                                                transition: 'all 0.3s',
+                                                border: '1px solid',
+                                                borderColor: selectedCategory === cat ? 'var(--accent-turquoise)' : 'rgba(255,255,255,0.05)',
+                                                background: selectedCategory === cat ? 'rgba(0, 212, 189, 0.1)' : 'rgba(255,255,255,0.02)',
+                                                color: selectedCategory === cat ? 'var(--accent-turquoise)' : '#555'
+                                            }}
+                                        >
+                                            {cat}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div style={{ padding: '18px 60px', backgroundColor: 'rgba(0,0,0,0.2)', display: 'flex', gap: '40px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
 
                                     <div style={{ flex: 1, position: 'relative' }}>
                                         <Search style={{ position: 'absolute', left: '25px', top: '50%', transform: 'translateY(-50%)', width: '20px', height: '20px', color: '#444' }} />
@@ -2236,7 +2350,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                     >
                                                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                             <span style={{ fontSize: '13px', color: 'white', fontWeight: '700' }}>{p.nombre}</span>
-                                                            <span style={{ fontSize: '10px', color: '#666' }}>{p.sku_externo} - {p.category || 'SIN CATEGORÍA'}</span>
+                                                            <span style={{ fontSize: '10px', color: '#666' }}>{p.sku_externo} - {normalizeCategory(p.category)}</span>
                                                         </div>
                                                         {selectedProduct?.id === p.id && <Check size={16} color="var(--accent-turquoise)" />}
                                                     </div>
@@ -2418,7 +2532,7 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                             onMouseEnter={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'}
                                                                             onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'}
                                                                         >
-                                                                            <span style={{ fontWeight: '700', letterSpacing: '1px' }}>{selectedProduct?.category || 'SELECCIONAR CATEGORÍA'}</span>
+                                                                            <span style={{ fontWeight: '700', letterSpacing: '1px' }}>{normalizeCategory(selectedProduct?.category) || 'SELECCIONAR CATEGORÍA'}</span>
                                                                             <ChevronRight size={14} style={{ transform: isCategoryDropdownOpen ? 'rotate(-90deg)' : 'rotate(90deg)', transition: 'transform 0.2s', color: 'var(--accent-turquoise)' }} />
                                                                         </div>
                                                                         {isCategoryDropdownOpen && (
@@ -2727,14 +2841,6 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                         <h3 style={{ fontSize: "14px", fontWeight: "900", color: "var(--accent-gold)", letterSpacing: "2px", margin: 0 }}>TEXTOS Y LLAMADO A LA ACCIÓN (GLOBAL HERO)</h3>
                                                         <div style={{ display: "flex", gap: "15px" }}>
                                                             <button
-                                                                onClick={handleGenerateHeroAI}
-                                                                disabled={isGeneratingAI}
-                                                                style={{ padding: "12px 24px", background: "rgba(255,255,255,0.05)", color: "white", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "4px", fontSize: "11px", fontWeight: "900", cursor: isGeneratingAI ? "not-allowed" : "pointer", textTransform: "uppercase", letterSpacing: "2px", display: "flex", alignItems: "center", gap: "10px", transition: 'all 0.3s' }}
-                                                            >
-                                                                {isGeneratingAI ? <Loader2 size={16} className="animate-spin" /> : <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#9d00ff' }} />}
-                                                                AUTO-GENERAR TEXTOS (IA)
-                                                            </button>
-                                                            <button
                                                                 onClick={handleSaveHeroTexts}
                                                                 disabled={isSaving}
                                                                 style={{ padding: "12px 24px", background: "var(--accent-turquoise)", color: "black", border: "none", borderRadius: "4px", fontSize: "11px", fontWeight: "900", cursor: isSaving ? "not-allowed" : "pointer", textTransform: "uppercase", letterSpacing: "2px", display: "flex", alignItems: "center", gap: "10px", transition: 'all 0.3s' }}
@@ -2814,6 +2920,36 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                                 style={{ width: "100%", backgroundColor: "rgba(0,0,0,0.5)", border: "1px solid rgba(255,255,255,0.05)", padding: "16px", color: "#888", borderRadius: "4px", fontSize: "13px", outline: "none", letterSpacing: "1px", fontFamily: "monospace", transition: 'border-color 0.3s' }}
                                                             />
                                                         </div>
+                                                        <div>
+                                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                                                <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", fontWeight: "800", letterSpacing: "1px" }}>TAMAÑO TÍTULO PRINCIPAL (H1)</label>
+                                                                <span style={{ fontSize: "11px", color: "var(--accent-turquoise)", fontWeight: "bold", fontFamily: "monospace" }}>{heroForm.titleSize || '5.0rem'}</span>
+                                                            </div>
+                                                            <input
+                                                                type="range"
+                                                                min="2.0"
+                                                                max="8.0"
+                                                                step="0.1"
+                                                                value={parseFloat(heroForm.titleSize || '5.0')}
+                                                                onChange={(e) => setHeroForm(prev => ({ ...prev, titleSize: `${e.target.value}rem` }))}
+                                                                style={{ width: "100%", accentColor: "var(--accent-turquoise)", cursor: "pointer" }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                                                <label style={{ fontSize: "10px", color: "rgba(255,255,255,0.4)", fontWeight: "800", letterSpacing: "1px" }}>TAMAÑO SUBTÍTULO / SLOGAN</label>
+                                                                <span style={{ fontSize: "11px", color: "var(--accent-turquoise)", fontWeight: "bold", fontFamily: "monospace" }}>{heroForm.paragraphSize || '1.5rem'}</span>
+                                                            </div>
+                                                            <input
+                                                                type="range"
+                                                                min="1.0"
+                                                                max="3.0"
+                                                                step="0.1"
+                                                                value={parseFloat(heroForm.paragraphSize || '1.5')}
+                                                                onChange={(e) => setHeroForm(prev => ({ ...prev, paragraphSize: `${e.target.value}rem` }))}
+                                                                style={{ width: "100%", accentColor: "var(--accent-turquoise)", cursor: "pointer" }}
+                                                            />
+                                                        </div>
                                                     </div>
                                                 </div>
 
@@ -2827,13 +2963,30 @@ export default function CatalogHub({ isOpen, onClose }: CatalogHubProps) {
                                                             <div key={idx} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "8px", padding: "30px", display: "flex", flexDirection: "column", gap: "20px" }}>
                                                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                                                     <span style={{ fontSize: "14px", fontWeight: "900", color: "var(--accent-gold)", letterSpacing: "2px" }}>SLIDE 0{slideNum}</span>
-                                                                    <button
-                                                                        onClick={() => handleSetAsHero(idx)}
-                                                                        disabled={isSaving || !activeImage}
-                                                                        style={{ padding: "10px 18px", background: activeImage ? "var(--accent-gold)" : "rgba(255,255,255,0.03)", color: activeImage ? "black" : "#444", border: "none", borderRadius: "2px", fontSize: "10px", fontWeight: "900", cursor: activeImage ? "pointer" : "not-allowed", textTransform: "uppercase", letterSpacing: "1px" }}
-                                                                    >
-                                                                        REEMPLAZAR
-                                                                    </button>
+                                                                    {activeImage ? (
+                                                                        <button
+                                                                            onClick={() => handleSetAsHero(idx)}
+                                                                            disabled={isSaving}
+                                                                            style={{ padding: "10px 18px", background: "var(--accent-gold)", color: "black", border: "none", borderRadius: "2px", fontSize: "10px", fontWeight: "900", cursor: "pointer", textTransform: "uppercase", letterSpacing: "1px" }}
+                                                                        >
+                                                                            ASIGNAR PREPARADA
+                                                                        </button>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => document.getElementById(`direct-hero-file-${idx}`)?.click()}
+                                                                            disabled={isSaving}
+                                                                            style={{ padding: "10px 18px", background: "rgba(0,212,189,0.05)", color: "var(--accent-turquoise)", border: "1px solid rgba(0,212,189,0.3)", borderRadius: "2px", fontSize: "10px", fontWeight: "900", cursor: "pointer", textTransform: "uppercase", letterSpacing: "1px" }}
+                                                                        >
+                                                                            REEMPLAZAR
+                                                                        </button>
+                                                                    )}
+                                                                    <input
+                                                                        id={`direct-hero-file-${idx}`}
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        style={{ display: "none" }}
+                                                                        onChange={(e) => handleDirectSlideUpload(e, idx)}
+                                                                    />
                                                                 </div>
                                                                 <div style={{ aspectRatio: "16/9", background: "#000", borderRadius: "4px", border: "1px solid rgba(255,255,255,0.1)", overflow: "hidden", position: "relative" }}>
                                                                     {currentImg ? (

@@ -19,13 +19,16 @@ export interface HeroContent {
     text_align_v?: string;
     titleLineHeight?: string;
     paragraphLineHeight?: string;
+    titleSize?: string;
+    paragraphSize?: string;
 }
 
 export interface LayoutBlock {
     id: string;
     label: string;
-    type?: 'image' | 'text' | 'both';
+    type?: 'image' | 'text' | 'both' | 'video';
     image?: string;
+    videoUrl?: string;
     // Editorial Content for Free Canvas
     blockTitle?: string;
     blockParagraph?: string;
@@ -142,13 +145,66 @@ const defaultContent: WebContent = {
     sections: []
 };
 
-export function useWebContent() {
+export function useWebContent(projectPath?: string) {
     const [content, setContent] = useState<WebContent>(defaultContent);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const fetchContent = useCallback(async () => {
         try {
+            setLoading(true);
+
+            // PRIORIDAD 1: LECTURA LOCAL SI HAY RUTA DE PROYECTO (Studio Mode)
+            if (projectPath) {
+                const res = await fetch(`/api/local/read?t=${Date.now()}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    },
+                    body: JSON.stringify({ projectPath, fileName: 'web_content_sync.json' })
+                });
+                const { success, content: localContent } = await res.json();
+                if (success) {
+                    const normalized = { 
+                        ...defaultContent, 
+                        ...localContent,
+                        sections: localContent.sections || []
+                    };
+                    setContent(normalized);
+                } else {
+                    console.log("[useWebContent] No local sync file found. Starting with empty workspace.");
+                    setContent(defaultContent);
+                }
+                setLoading(false);
+                return;
+            }
+
+            // PRIORIDAD 1.5: INTENTAR LEER ARCHIVO ESTÁTICO LOCAL EN LA RAÍZ DEL SITIO (Modo Producción Estática)
+            try {
+                const res = await fetch(`/web_content_sync.json?t=${Date.now()}`, {
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    }
+                });
+                if (res.ok) {
+                    const localContent = await res.json();
+                    const normalized = { 
+                        ...defaultContent, 
+                        ...localContent,
+                        sections: localContent.sections || []
+                    };
+                    setContent(normalized);
+                    setLoading(false);
+                    return;
+                }
+            } catch (e) {
+                console.log("No se pudo cargar el archivo local web_content_sync.json, usando Supabase.");
+            }
+
+            // PRIORIDAD 2: SUPABASE (Modo Producción o Fallback)
             const { data, error: fetchError } = await supabase
                 .from('web_contenido')
                 .select('section, content');
@@ -159,13 +215,10 @@ export function useWebContent() {
                 return;
             }
 
-            console.log(`[useWebContent] Filas obtenidas: ${data?.length || 0}`);
-
             if (data && data.length > 0) {
                 const newContent: WebContent = { ...defaultContent };
                 const extraSections: Record<string, any> = {};
 
-                // 1. Primero procesamos las filas maestras (hero y sections)
                 data.forEach((row) => {
                     const sectionName = row.section;
                     if (sectionName === 'hero') {
@@ -175,33 +228,26 @@ export function useWebContent() {
                         newContent.sections = Array.isArray(rawData) ? rawData :
                             (typeof rawData === 'object' ? Object.values(rawData) : []);
                     } else {
-                        // Guardamos las secciones extra (mugs, botellas, etc.) en el objeto principal y para procesar galerías
                         const key = sectionName.toLowerCase();
                         extraSections[key] = row.content;
                         newContent[key] = row.content;
                     }
                 });
 
-                // 2. Fusionar galerías de secciones extra en el array de secciones dinámicas
                 if (newContent.sections.length > 0) {
                     newContent.sections = newContent.sections.map(s => {
                         const titleLower = (s.title1 || (s as any).title || '').toLowerCase();
                         const idLower = (s.id || '').toLowerCase();
-
-                        // Buscamos si alguna de las claves extra (mugs, botellas...) está en el título o ID
                         const foundKey = Object.keys(extraSections).find(key =>
                             titleLower.includes(key) || idLower.includes(key)
                         );
-
                         const extra = foundKey ? extraSections[foundKey] : null;
-
                         if (extra && extra.gallery && Array.isArray(extra.gallery)) {
                             return { ...s, gallery: extra.gallery };
                         }
                         return s;
                     });
                 }
-
                 setContent(newContent);
             }
         } catch (err) {
@@ -211,71 +257,62 @@ export function useWebContent() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [projectPath]);
 
     const updateSection = useCallback(async (section: keyof WebContent, newContentData: any) => {
         try {
             const currentSection = content[section];
-            let merged;
+            let merged = Array.isArray(currentSection) ? newContentData : { ...currentSection, ...newContentData };
 
-            if (Array.isArray(currentSection)) {
-                merged = newContentData;
-            } else {
-                merged = { ...currentSection, ...newContentData };
+            // 1. Update Supabase
+            try {
+                const { error: updateError } = await supabase
+                    .from('web_contenido')
+                    .upsert({
+                        section,
+                        content: merged,
+                        updated_by: 'useWebContent'
+                    }, { onConflict: 'section' });
+                if (updateError) throw updateError;
+            } catch (err) {
+                console.warn("[useWebContent] Supabase sync error (using local state):", err);
             }
 
-            const { error: updateError } = await supabase
-                .from('web_contenido')
-                .upsert({
-                    section,
-                    content: merged,
-                    updated_by: 'useWebContent'
-                }, {
-                    onConflict: 'section'
-                });
+            const updatedContent = { ...content, [section]: merged };
+            setContent(updatedContent);
 
-            if (updateError) {
-                console.error('Error updating section:', updateError);
-                alert(`Error al guardar sección ${section}: ${updateError.message}`);
-                throw updateError;
+            // 2. If projectPath is active, save to local sync file
+            if (projectPath) {
+                try {
+                    await fetch('/api/local/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            projectPath,
+                            fileName: 'web_content_sync.json',
+                            content: updatedContent
+                        })
+                    });
+                } catch (localErr) {
+                    console.error("[useWebContent] Local sync save error:", localErr);
+                }
             }
-
-            setContent(prev => ({
-                ...prev,
-                [section]: merged
-            }));
 
             return true;
-        } catch (err) {
-            console.error('Error updating section:', err);
-            return false;
+        } catch (err) { 
+            return false; 
         }
-    }, [content]);
+    }, [content, projectPath]);
 
     useEffect(() => {
         fetchContent();
+        if (!projectPath) {
+            const channelId = `web-content-sync-${Math.random().toString(36).substring(7)}`;
+            const channel = supabase.channel(channelId).on('postgres_changes' as any, { event: '*', schema: 'public', table: 'web_contenido' }, () => fetchContent());
+            channel.subscribe();
+            return () => { supabase.removeChannel(channel); };
+        }
+    }, [fetchContent, projectPath]);
 
-        const channel = supabase
-            .channel('web_contenido_changes')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'web_contenido' },
-                () => {
-                    fetchContent();
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [fetchContent]);
-
-    return {
-        content,
-        loading,
-        error,
-        refetch: fetchContent,
-        updateSection
-    };
+    return { content, loading, error, refetch: fetchContent, updateSection };
 }

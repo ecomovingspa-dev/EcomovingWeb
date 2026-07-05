@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateSEOQueryAI } from '@/lib/gemini';
 
-// Inicializar Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '');
-
+/**
+ * MOTOR DE SEO (@seo_mkt): Inteligencia Semántica centrada en Google AI Studio.
+ * SISTEMA SALVAVIDAS: Fallback automático a Ollama local ante errores 429.
+ */
 export async function POST(request: NextRequest) {
     try {
         const { action, text, context, section } = await request.json();
@@ -11,17 +12,10 @@ export async function POST(request: NextRequest) {
         if (!action) {
             return NextResponse.json({ error: 'Action is required' }, { status: 400 });
         }
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-1.5-flash',
-            generationConfig: {
-                temperature: 0.9,
-                topP: 0.95,
-                responseMimeType: "application/json"
-            }
-        });
+
         let prompt = '';
         let systemContext = `Rol: Redactor SEO B2B para Ecomoving.
-Regla: Prohibido usar frases genéricas pre-armadas. El texto debe ser único y basarse estrictamente en los datos técnicos técnicos y el contexto entregado.`;
+Regla: Prohibido usar frases genéricas pre-armadas. El texto debe ser único y basarse estrictamente en los datos técnicos y el contexto entregado.`;
 
         switch (action) {
             case 'analyze':
@@ -36,7 +30,7 @@ Proporciona:
 3. Debilidades
 4. Sugerencia de mejora
 
-Responde en formato JSON:
+RESPONDE EXCLUSIVAMENTE EN FORMATO JSON:
 {
   "score": number,
   "strengths": ["string"],
@@ -54,7 +48,7 @@ ${context || 'Mejora este texto'}
 Texto a procesar:
 "${text}"
 
-Responde EXCLUSIVAMENTE en JSON:
+RESPONDE EXCLUSIVAMENTE CON EL TEXTO MEJORADO EN FORMATO JSON:
 {
   "improved": "tu_texto_aqui"
 }`;
@@ -64,16 +58,16 @@ Responde EXCLUSIVAMENTE en JSON:
                 prompt = `${systemContext}
 
 Genera un nuevo texto optimizado para SEO.
-            Sección: ${section}
+Sección: ${section}
 Tipo de contenido: ${context || 'descripción'}
 
-        Requisitos:
-        - Máximo 2 - 3 oraciones para descripciones
-            - 5 - 8 palabras para títulos
-                - Incluir al menos 1 keyword principal
-                    - Tono premium y profesional
+Requisitos:
+- Máximo 2 - 3 oraciones para descripciones
+- 5 - 8 palabras para títulos
+- Incluir al menos 1 keyword principal
+- Tono premium y profesional
 
-Responde en formato JSON:
+RESPONDE EXCLUSIVAMENTE EN FORMATO JSON:
 {
   "text": "texto generado",
   "keywords": ["keyword1", "keyword2"],
@@ -91,10 +85,10 @@ Contenido actual de la sección:
 ${JSON.stringify(text)}
 
 Requisitos por campo:
-        - Títulos: 5 - 10 palabras, impactantes y con keyword principal.
+- Títulos: 5 - 10 palabras, impactantes y con keyword principal.
 - Párrafos: 2 - 3 oraciones, informativos y persuasivos.
 
-Responde en formato JSON:
+RESPONDE EXCLUSIVAMENTE EN FORMATO JSON:
 {
   "optimized": { "...": "" },
   "summary": "Resumen de las mejoras realizadas"
@@ -108,13 +102,13 @@ Realiza una auditoría SEO completa de los siguientes textos de la landing page:
 
 ${text}
 
-        Proporciona:
-        1. Puntuación general(0 - 100)
-        2. Análisis por sección
-        3. Recomendaciones prioritarias(top 5)
-        4. Meta tags sugeridos(title y description)
+Proporciona:
+1. Puntuación general (0 - 100)
+2. Análisis por sección
+3. Recomendaciones prioritarias (top 5)
+4. Meta tags sugeridos (title y description)
 
-Responde en formato JSON:
+RESPONDE EXCLUSIVAMENTE EN FORMATO JSON:
 {
   "overall_score": 0,
   "section_scores": { "hero": 0, "mugs": 0 },
@@ -130,40 +124,27 @@ Responde en formato JSON:
                 return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
         }
 
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const textResponse = response.text();
-
-        // Intentar parsear como JSON de forma robusta
-        let parsedData: any = null;
-        try {
-            const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                const cleanedJson = jsonMatch[0].trim();
-                parsedData = JSON.parse(cleanedJson);
-            }
-        } catch (e) {
-            console.error('Failed to parse AI JSON:', e);
-        }
+        // Llamada al motor centralizado (Gemini con fallback a Ollama)
+        const parsedData = await generateSEOQueryAI(prompt);
 
         if (parsedData) {
             return NextResponse.json({ success: true, data: parsedData });
         }
 
-        // Si no es JSON, enviarlo como 'improved' para que el frontend lo use directamente
-        return NextResponse.json({
-            success: true,
-            data: {
-                improved: textResponse.replace(/^["']|["']$/g, '').trim(),
-                raw: textResponse
-            }
-        });
+        return NextResponse.json({ error: 'AI engine failed to produce valid response' }, { status: 500 });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('SEO API Error:', error);
+        const errorMessage = error.message || String(error);
+        const isQuotaError = errorMessage.includes('429');
+
         return NextResponse.json(
-            { error: 'Error processing SEO request', details: String(error) },
-            { status: 500 }
+            { 
+                error: isQuotaError ? 'Límite de IA excedido (Actuando Salvavidas Local)' : 'Error procesando solicitud de SEO', 
+                details: errorMessage 
+            },
+            { status: isQuotaError ? 429 : 500 }
         );
     }
 }
+

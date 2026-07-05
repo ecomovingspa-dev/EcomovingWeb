@@ -166,14 +166,11 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate, selectedBl
         setAnalysis(null);
         try {
             const lowField = (editingField || '').toLowerCase();
-            const response = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'analyze',
-                    text: text,
-                    section: selectedSection,
-                    context: `Eres un Especialista SEO de Élite. Analiza el siguiente texto para una web de merchandising corporativo que abarca desde alta gama.
+            const data = await fetchAI({
+                action: 'analyze',
+                text: text,
+                section: selectedSection,
+                context: `Eres un Especialista SEO de Élite. Analiza el siguiente texto para una web de merchandising corporativo que abarca desde alta gama.
                     CONTEXTO VISUAL: ${lowField.includes('title') ? 'Es un TÍTULO, debe ser corto y potente.' : 'Es un PÁRRAFO, debe ser explicativo.'}
                     CONTEXTO DE CATEGORÍA: ${contextCategory}
                     
@@ -181,10 +178,7 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate, selectedBl
                     1. Brevedad (<25 palabras para párrafos).
                     2. Vocabulario variado (evitar "premium" en exceso).
                     3. Pertinencia con la categoría ${contextCategory}.`
-                })
             });
-
-            const data = await response.json();
             if (data.success && data.data) {
                 setAnalysis(data.data);
             }
@@ -240,6 +234,40 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate, selectedBl
     }, [isOpen, selectedBlockId]);
 
 
+
+    // --- FUNCIONES DE AI SEGURAS (Protocolo @antigravity) ---
+    const fetchAI = async (payload: any) => {
+        try {
+            const response = await fetch('/api/seo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error("Respuesta no válida del servidor (HTML/Error).");
+            }
+
+            const data = await response.json();
+            if (!response.ok) {
+                const isQuota = response.status === 429 || 
+                                data.error?.toLowerCase().includes('quota') || 
+                                data.details?.toLowerCase().includes('quota');
+                if (isQuota) throw new Error('LIMIT_EXCEEDED');
+                throw new Error(data.error || 'Error desconocido en la IA');
+            }
+            return data;
+        } catch (err: any) {
+            if (err.message === 'LIMIT_EXCEEDED') {
+                alert("⚠️ Límite de IA excedido (Quota Exceeded).\n\nEspera 60 segundos o edita manualmente.");
+            } else {
+                console.error('[AI_FETCH_ERROR]', err);
+                alert(`Error IA: ${err.message}`);
+            }
+            throw err;
+        }
+    };
 
     const saveContent = async (section: string, newContent: Record<string, unknown>) => {
         setSaving(true);
@@ -339,23 +367,18 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate, selectedBl
         setOptimizationDraft(null);
         try {
             const currentContent = getSelectedContent();
-            const response = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'auto_optimize',
-                    text: currentContent,
-                    section: selectedSection,
-                    context: 'IMPORTANT: Keep Titles as short titles (5-8 words) and Paragraphs as 2-3 sentence blocks. Do not mix them.'
-                })
+            const data = await fetchAI({
+                action: 'auto_optimize',
+                text: currentContent,
+                section: selectedSection,
+                context: 'IMPORTANT: Keep Titles as short titles (5-8 words) and Paragraphs as 2-3 sentence blocks. Do not mix them.'
             });
 
-            const data = await response.json();
             if (data.success && data.data?.optimized) {
                 setOptimizationDraft(data.data.optimized);
             }
         } catch (error) {
-            console.error('Error auto-optimizing:', error);
+            // Error ya manejado en fetchAI
         } finally {
             setAutoOptimizing(false);
         }
@@ -392,55 +415,40 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate, selectedBl
             const baseContext = `DATOS REALES DEL CATÁLOGO (${contextCategory}): ${catalogContext}. IMAGEN DE MARCA: Ecomoving, empresa chilena de merchandising corporativo premium sustentable. Tono: Impactante, sofisticado, profesional.`;
 
             // 2. Generar TÍTULO H1
-            const titleRes = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'improve',
-                    text: `Título hero principal para sección ${contextCategory}`,
-                    section: 'Hero',
-                    context: `${baseContext}. ROL: COPYWRITER SENIOR. MISIÓN: Crear un TÍTULO H1 (4-7 palabras) potente y memorable que capture la esencia del merchandising sustentable aplicado a ${contextCategory}. Sin comillas, sin markdown.`
-                })
+            const titleData = await fetchAI({
+                action: 'improve',
+                text: `Título hero principal para sección ${contextCategory}`,
+                section: 'Hero',
+                context: `${baseContext}. ROL: COPYWRITER SENIOR. MISIÓN: Crear un TÍTULO H1 (4-7 palabras) potente y memorable que capture la esencia del merchandising sustentable aplicado a ${contextCategory}. Sin comillas, sin markdown.`
             });
-            const titleData = await titleRes.json();
             const cleanTitle = (titleData.data?.improved || `ECOMOVING ${contextCategory}`)
                 .replace(/^["'`{]+|["'`}]+$/g, '').replace(/^[A-Z_]+:\s*/i, '').trim();
 
             // 3. Generar PÁRRAFO bajada
-            const paraRes = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'improve',
-                    text: `Descripción hero para ${contextCategory} corporativo`,
-                    section: 'Hero',
-                    context: `${baseContext}. ROL: ESPECIALISTA PRODUCTO TÉCNICO. MISIÓN: Redactar una BAJADA comercial (20-30 palabras) que fusione beneficios emocionales con especificaciones reales. Mencionar sustentabilidad e impacto de marca. Sin comillas, sin markdown.`
-                })
+            const paraData = await fetchAI({
+                action: 'improve',
+                text: `Descripción hero para ${contextCategory} corporativo`,
+                section: 'Hero',
+                context: `${baseContext}. ROL: ESPECIALISTA PRODUCTO TÉCNICO. MISIÓN: Redactar una BAJADA comercial (20-30 palabras) que fusione beneficios emocionales con especificaciones reales. Mencionar sustentabilidad e impacto de marca. Sin comillas, sin markdown.`
             });
-            const paraData = await paraRes.json();
-            const cleanPara = (paraData.data?.improved || 'Elevamos tu marca con productos de alto impacto y conciencia ecológica.')
+            const paraDataActual = paraData;
+            const cleanPara = (paraDataActual.data?.improved || 'Elevamos tu marca con productos de alto impacto y conciencia ecológica.')
                 .replace(/^["'`{]+|["'`}]+$/g, '').replace(/^[A-Z_]+:\s*/i, '').trim();
 
             // 4. Generar CTA
-            const ctaRes = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'improve',
-                    text: `Texto botón CTA para ${contextCategory}`,
-                    section: 'Hero CTA',
-                    context: `${baseContext}. ROL: EXPERTO CRO. MISIÓN: Texto de BOTÓN de acción (2-3 palabras máximo), directo e irresistible. Sin comillas, sin markdown.`
-                })
+            const ctaData = await fetchAI({
+                action: 'improve',
+                text: `Texto botón CTA para ${contextCategory}`,
+                section: 'Hero CTA',
+                context: `${baseContext}. ROL: EXPERTO CRO. MISIÓN: Texto de BOTÓN de acción (2-3 palabras máximo), directo e irresistible. Sin comillas, sin markdown.`
             });
-            const ctaData = await ctaRes.json();
             const cleanCta = (ctaData.data?.improved || 'EXPLORAR CATÁLOGO')
                 .replace(/^["'`{]+|["'`}]+$/g, '').replace(/^[A-Z_]+:\s*/i, '').trim().toUpperCase();
 
             setHeroDraft({ title1: cleanTitle, paragraph1: cleanPara, cta_text: cleanCta });
 
         } catch (err) {
-            console.error('Error generando Hero con catálogo:', err);
-            alert('Error conectando con el redactor IA.');
+            // Error ya manejado
         } finally {
             setGeneratingHero(false);
         }
@@ -465,47 +473,32 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate, selectedBl
             const baseContext = `Eres el Director de Marketing B2B experto en Merchandising Sustentable. Contexto técnico global: ${contextSpecs}`;
 
             // 1. Generar Título del Bloque
-            const titleRes = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'improve',
-                    text: `Título impactante para: ${block.label || contextCategory}`,
-                    section: 'Block Title',
-                    context: `${baseContext}. ROL: COPYWRITER SENIOR. MISIÓN: Crea un título potente (2-5 palabras). Sin comillas.`
-                })
+            const titleData = await fetchAI({
+                action: 'improve',
+                text: `Título impactante para: ${block.label || contextCategory}`,
+                section: 'Block Title',
+                context: `${baseContext}. ROL: COPYWRITER SENIOR. MISIÓN: Crea un título potente (2-5 palabras). Sin comillas.`
             });
-            const titleData = await titleRes.json();
             const cleanTitle = (titleData.data?.improved || block.label || 'Producto Premium')
                 .replace(/^["'`{]+|["'`}]+$/g, '').replace(/^[A-Z_]+:\s*/i, '').trim();
 
             // 2. Generar Párrafo del Bloque
-            const paraRes = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'improve',
-                    text: `Párrafo corto de venta para: ${block.label || contextCategory}`,
-                    section: 'Block Description',
-                    context: `${baseContext}. ROL: ESPECIALISTA PRODUCTO TÉCNICO. MISIÓN: Redactar un gancho comercial (15-20 palabras) fusionando beneficios y spec técnica. Sin comillas.`
-                })
+            const paraData = await fetchAI({
+                action: 'improve',
+                text: `Párrafo corto de venta para: ${block.label || contextCategory}`,
+                section: 'Block Description',
+                context: `${baseContext}. ROL: ESPECIALISTA PRODUCTO TÉCNICO. MISIÓN: Redactar un gancho comercial (15-20 palabras) fusionando beneficios y spec técnica. Sin comillas.`
             });
-            const paraData = await paraRes.json();
             const cleanPara = (paraData.data?.improved || 'Diseño de alto impacto corporativo y material sustentable premium.')
                 .replace(/^["'`{]+|["'`}]+$/g, '').replace(/^[A-Z_]+:\s*/i, '').trim();
 
             // 3. Generar Alt Text (Imágenes de SEO vital)
-            const altRes = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'improve',
-                    text: `Texto alternativo para imagen SEO de: ${block.label || contextCategory}`,
-                    section: 'Block Alt Text',
-                    context: `${baseContext}. ROL: SEO MANAGER. MISIÓN: Texto ALT técnico (max 8 palabras) describiendo producto, color, marca. Sin comillas.`
-                })
+            const altData = await fetchAI({
+                action: 'improve',
+                text: `Texto alternativo para imagen SEO de: ${block.label || contextCategory}`,
+                section: 'Block Alt Text',
+                context: `${baseContext}. ROL: SEO MANAGER. MISIÓN: Texto ALT técnico (max 8 palabras) describiendo producto, color, marca. Sin comillas.`
             });
-            const altData = await altRes.json();
             const cleanAlt = (altData.data?.improved || `${block.label} corporativo merch`)
                 .replace(/^["'`{]+|["'`}]+$/g, '').replace(/^[A-Z_]+:\s*/i, '').trim();
 
@@ -573,17 +566,12 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate, selectedBl
             const allFeaturesText = `${rawDescription}. ${material}. ${featuresArray}`.substring(0, 800);
 
             // En lugar de Regex, delegamos a la IA la tarea técnica de síntesis
-            const paraRes = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'improve',
-                    text: `Características técnicas: ${allFeaturesText}`,
-                    section: 'Block SKU Summary',
-                    context: `Eres un SINTETIZADOR TÉCNICO B2B. Tu misión: Extrae lo más valioso de esta data y genera UN gancho comercial o bala técnica directa de MÁXIMO 10-12 palabras. No inventes características, usa solo las reales provistas. Sin comillas.`
-                })
+            const paraData = await fetchAI({
+                action: 'improve',
+                text: `Características técnicas: ${allFeaturesText}`,
+                section: 'Block SKU Summary',
+                context: `Eres un SINTETIZADOR TÉCNICO B2B. Tu misión: Extrae lo más valioso de esta data y genera UN gancho comercial o bala técnica directa de MÁXIMO 10-12 palabras. No inventes características, usa solo las reales provistas. Sin comillas.`
             });
-            const paraData = await paraRes.json();
             const cleanFeature = (paraData.data?.improved || paraData.data?.text || 'Generación pausada o sin datos técnicos suficientes.')
                 .replace(/^["'`{]+|["'`}]+$/g, '').replace(/^[A-Z_]+:\s*/i, '').trim();
 
@@ -776,18 +764,12 @@ export default function EditorSEO({ isOpen, onClose, onContentUpdate, selectedBl
 
             // ... (lógica existente para nombres dinámicos) ...
 
-            const response = await fetch('/api/seo', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'improve',
-                    text: text || `Generar texto para ${contextCategory}`, // Si está vacío, dale una semilla
-                    section: sectionName,
-                    context: finalContext
-                })
+            const data = await fetchAI({
+                action: 'improve',
+                text: text || `Generar texto para ${contextCategory}`, // Si está vacío, dale una semilla
+                section: sectionName,
+                context: finalContext
             });
-
-            const data = await response.json();
             if (data.success && data.data) {
                 const rawSuggestion = data.data;
                 let improvedText = '';

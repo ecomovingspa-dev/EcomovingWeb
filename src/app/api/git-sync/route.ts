@@ -13,11 +13,11 @@ export async function POST() {
         // Guardamos los cambios del diseño actual antes de generar el build estático
         console.log('Sincronizando cambios técnicos en EcomovingWeb...');
         await execPromise('git add . && git commit -m "sync: auto-commit from studio publish button" || echo "No technical changes to commit"');
-        await execPromise('git push origin master').catch(err => console.warn('Push Admin omitido o fallido:', err.message));
+        await execPromise('git push').catch(err => console.warn('Push Admin omitido o fallido:', err.message));
 
         // 2. Ejecutar Protocolo de Publicación Estática (publish.ps1)
         // Este script maneja el aislamiento de rutas, npm run build, sync con ecomoving-site y push a producción.
-        const scriptPath = 'c:\\Users\\Mario\\Desktop\\EcomovingWeb\\publish.ps1';
+        const scriptPath = 'c:\\Users\\Mario\\Desktop\\LaFabrica\\publish.ps1';
         console.log(`Ejecutando script oficial: ${scriptPath}`);
         
         const { stdout } = await execPromise(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`);

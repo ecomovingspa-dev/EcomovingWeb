@@ -7,6 +7,12 @@ import PeekCarousel from '@/components/PeekCarousel';
 import Link from 'next/link';
 import WhatsAppButton from '@/components/WhatsAppButton';
 
+const getVimeoId = (url: string) => {
+  if (!url) return null;
+  const match = url.match(/(?:vimeo\.com\/|player\.vimeo\.com\/video\/)(\d+)/);
+  return match ? match[1] : null;
+};
+
 const BentoBlock = ({ block, previewMode }: {
   block: any,
   previewMode?: string
@@ -41,7 +47,8 @@ const BentoBlock = ({ block, previewMode }: {
   const images = block.gallery && block.gallery.length > 0 ? block.gallery : [block.image].filter(Boolean);
   
   const [spanW, spanH] = finalSpan.split('x').map((n: string) => parseInt(n) || 1);
-  const isImage = block.type === 'image' || block.type === 'both' || !block.type;
+  const isVideo = block.type === 'video';
+  const isImage = (block.type === 'image' || block.type === 'both' || !block.type) && !isVideo;
 
   const shadowStyles = {
     none: 'none',
@@ -148,6 +155,49 @@ const BentoBlock = ({ block, previewMode }: {
           )}
         </div>
       )}
+
+      {isVideo && block.videoUrl && (() => {
+        const vimeoId = getVimeoId(block.videoUrl);
+        if (vimeoId) {
+          return (
+            <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden', pointerEvents: 'none' }}>
+              <iframe
+                src={`https://player.vimeo.com/video/${vimeoId}?autoplay=1&loop=1&muted=1&background=1`}
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  width: '100%',
+                  height: '100%',
+                  transform: 'translate(-50%, -50%) scale(1.35)',
+                  border: 'none',
+                  pointerEvents: 'none'
+                }}
+                allow="autoplay; fullscreen"
+                title="Vimeo Background Video"
+              />
+            </div>
+          );
+        } else {
+          return (
+            <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'hidden' }}>
+              <video
+                src={block.videoUrl}
+                autoPlay
+                loop
+                muted
+                playsInline
+                style={{
+                  position: 'absolute',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+              />
+            </div>
+          );
+        }
+      })()}
 
       {(block.blockTitle || block.blockParagraph || true) && (
         <div style={{
@@ -412,7 +462,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 1 }}
-              style={{ fontSize: 'clamp(3rem, 10vw, 6rem)', fontFamily: 'var(--font-heading)', lineHeight: (heroContent as any).titleLineHeight || 1, marginBottom: '20px', textShadow: '0 4px 20px rgba(0,0,0,0.8)' }}
+              style={{ fontSize: (heroContent as any).titleSize || 'clamp(3rem, 10vw, 6rem)', fontFamily: 'var(--font-heading)', lineHeight: (heroContent as any).titleLineHeight || 1, marginBottom: '20px', textShadow: '0 4px 20px rgba(0,0,0,0.8)' }}
             >
               {(heroContent as any).title1}
             </motion.h1>
@@ -422,7 +472,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1, delay: 0.5 }}
-              style={{ fontSize: 'clamp(1.1rem, 3vw, 1.5rem)', color: '#ccc', marginBottom: '40px', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,0.9)', lineHeight: (heroContent as any).paragraphLineHeight || 1.4 }}
+              style={{ fontSize: (heroContent as any).paragraphSize || 'clamp(1.1rem, 3vw, 1.5rem)', color: '#ccc', marginBottom: '40px', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,0.9)', lineHeight: (heroContent as any).paragraphLineHeight || 1.4 }}
             >
               {(heroContent as any).paragraph1}
             </motion.p>
