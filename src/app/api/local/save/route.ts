@@ -13,9 +13,9 @@ export async function POST(request: Request) {
         // Aseguramos que la ruta sea absoluta y válida
         const targetPath = path.join(projectPath, fileName);
         
-        // Verificamos si la carpeta existe
+        // Verificamos si la carpeta existe, si no, la creamos recursivamente
         if (!fs.existsSync(projectPath)) {
-            return NextResponse.json({ error: `La carpeta del proyecto no existe: ${projectPath}` }, { status: 404 });
+            fs.mkdirSync(projectPath, { recursive: true });
         }
 
         // Si el contenido es un objeto, lo stringificamos como JSON

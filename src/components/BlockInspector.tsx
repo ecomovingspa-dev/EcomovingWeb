@@ -4,10 +4,22 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     X, Move, FileText, Layers, Plus, Trash2, Sparkles, Loader2,
-    Image as ImageIcon, ChevronRight, Layout, Palette, Save
+    Image as ImageIcon, ChevronRight, Layout, Palette, Save, Copy
 } from 'lucide-react';
 import { LayoutBlock } from '@/hooks/useWebContent';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseClient } from '@/lib/supabase';
+
+const resolveImageUrl = (img: string, projectPath?: string) => {
+  if (!img) return '';
+  if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('data:')) {
+    return img;
+  }
+  if (projectPath && img.startsWith('/')) {
+    if (img.startsWith('/api/local-asset')) return img;
+    return `/api/local-asset?path=${encodeURIComponent(projectPath.replace(/\\/g, '/') + '/public' + img)}`;
+  }
+  return img;
+};
 
 interface BlockInspectorProps {
     // Bloque actualmente seleccionado (null = modo canvas)
@@ -16,19 +28,30 @@ interface BlockInspectorProps {
     allBlocks: LayoutBlock[];
     // Colores del lienzo
     canvasBgColor: string;
+    // Categorías del brochure
+    categories?: string[];
+    onAddCategory?: () => void;
+    onRenameCategory?: (idx: number, newVal: string) => void;
+    onDeleteCategory?: (cat: string) => void;
     // Callbacks
     onClose: () => void;
     onUpdate: (blockId: string, updates: Partial<LayoutBlock>) => void;
     onDelete: (blockId: string) => void;
+    onDuplicate?: (blockId: string) => void;
     onAddBlock: () => void;
     onSelectBlock: (blockId: string) => void;
     onCanvasBgChange: (color: string) => void;
+    projectId?: string;
+    projectPath?: string;
 }
 
 export default function BlockInspector({
-    block, allBlocks, canvasBgColor,
-    onClose, onUpdate, onDelete, onAddBlock, onSelectBlock, onCanvasBgChange
+    block, allBlocks, canvasBgColor, categories,
+    onAddCategory, onRenameCategory, onDeleteCategory,
+    onClose, onUpdate, onDelete, onDuplicate, onAddBlock, onSelectBlock, onCanvasBgChange,
+    projectId, projectPath
 }: BlockInspectorProps) {
+    const supabase = getSupabaseClient(projectId);
 
     const [activeTab, setActiveTab] = useState<'layout' | 'header' | 'content' | 'visual' | 'cta'>('layout');
     const [generatingAI, setGeneratingAI] = useState(false);
@@ -84,6 +107,7 @@ export default function BlockInspector({
 
     // Reset tab cuando cambia el bloque
     useEffect(() => { setActiveTab('layout'); setPickerOpen(false); }, [block?.id]);
+    const isEcomoving = !projectId || projectId === 'ecomoving-public';
 
     const update = useCallback((updates: Partial<LayoutBlock>) => {
         if (!block) return;
@@ -91,8 +115,50 @@ export default function BlockInspector({
         onUpdate(block.id, updates);
     }, [block, onUpdate]);
 
-    // ── BIBLIOTECA: búsqueda en tabla productos (fuente única de verdad) ───────────
+    // ── BIBLIOTECA: búsqueda en tabla productos o web sync unificado ───────────
     const searchPickerImages = useCallback(async (query: string) => {
+        if (!isEcomoving) {
+            setPickerLoading(true);
+            try {
+                // List files in the 'grilla' bucket
+                const { data } = await supabase.storage.from('grilla').list('', { limit: 100 });
+                let results: { url: string; name: string }[] = [];
+                if (data) {
+                    results = data
+                        .filter(f => f.name !== '.emptyKeepFile' && f.name !== '.emptyFolderPlaceholder')
+                        .map(f => {
+                            const { data: { publicUrl } } = supabase.storage.from('grilla').getPublicUrl(f.name);
+                            return { url: publicUrl, name: f.name };
+                        });
+                }
+                
+                // Fallback to 'hero' bucket if 'grilla' is empty
+                if (results.length === 0) {
+                    const { data: heroData } = await supabase.storage.from('hero').list('', { limit: 100 });
+                    if (heroData) {
+                        results = heroData
+                            .filter(f => f.name !== '.emptyKeepFile' && f.name !== '.emptyFolderPlaceholder')
+                            .map(f => {
+                                const { data: { publicUrl } } = supabase.storage.from('hero').getPublicUrl(f.name);
+                                return { url: publicUrl, name: f.name };
+                            });
+                    }
+                }
+
+                if (query.trim()) {
+                    const q = query.toLowerCase().trim();
+                    results = results.filter(img => img.name.toLowerCase().includes(q));
+                }
+
+                setPickerImages(results);
+            } catch (e) {
+                console.error('[BIBLIOTECA LOCAL SUPABASE]', e);
+                setPickerImages([]);
+            }
+            setPickerLoading(false);
+            return;
+        }
+
         if (!query.trim()) {
             setPickerImages([]);
             setPickerLoading(false);
@@ -100,37 +166,37 @@ export default function BlockInspector({
         }
         setPickerLoading(true);
         try {
-            const { data } = await supabase
-                .from('productos')
-                .select('nombre, categoria, imagen_principal, imagenes_galeria')
-                .eq('status', 'approved')
-                .ilike('nombre', `%${query.trim()}%`)
-                .limit(40);
+            if (isEcomoving) {
+                const { data } = await supabase
+                    .from('productos')
+                    .select('nombre, categoria, imagen_principal, imagenes_galeria')
+                    .eq('status', 'approved')
+                    .ilike('nombre', `%${query.trim()}%`)
+                    .limit(40);
 
-            const res: { url: string; name: string }[] = [];
-            if (data) {
-                for (const p of data) {
-                    // imagen principal primero
-                    if (p.imagen_principal) {
-                        res.push({ url: p.imagen_principal, name: p.nombre });
-                    }
-                    // todas las imágenes de galería
-                    if (Array.isArray(p.imagenes_galeria)) {
-                        p.imagenes_galeria.forEach((url: string) => {
-                            if (url && url !== p.imagen_principal) {
-                                res.push({ url, name: p.nombre });
-                            }
-                        });
+                const res: { url: string; name: string }[] = [];
+                if (data) {
+                    for (const p of data) {
+                        if (p.imagen_principal) {
+                            res.push({ url: p.imagen_principal, name: p.nombre });
+                        }
+                        if (Array.isArray(p.imagenes_galeria)) {
+                            p.imagenes_galeria.forEach((url: string) => {
+                                if (url && url !== p.imagen_principal) {
+                                    res.push({ url, name: p.nombre });
+                                }
+                            });
+                        }
                     }
                 }
+                setPickerImages(res);
             }
-            setPickerImages(res);
         } catch (e) {
             console.error('[BIBLIOTECA]', e);
             setPickerImages([]);
         }
         setPickerLoading(false);
-    }, []);
+    }, [isEcomoving, projectPath]);
 
     // Debounce: dispara la búsqueda 350ms después de que el usuario deje de escribir
     const handlePickerQueryChange = (q: string) => {
@@ -140,31 +206,50 @@ export default function BlockInspector({
         pickerSearchRef.current = setTimeout(() => searchPickerImages(q), 350);
     };
 
-    // ── BIBLIOTECA: fetch imágenes de GRILLA (imágenes de insumo) ────────
+    // ── BIBLIOTECA: fetch imágenes de GRILLA o LOCAL ────────
     const fetchGrillaImages = useCallback(async () => {
         setLoadingGrilla(true);
         try {
-            const { data: files } = await supabase.storage.from('imagenes-marketing').list('grilla');
-            if (files) {
-                const results = files
-                    .filter(f => f.name !== '.emptyKeepFile' && !['grilla', 'catalogo', 'hero', 'marketing'].includes(f.name))
-                    .map(f => {
-                        const { data: { publicUrl } } = supabase.storage.from('imagenes-marketing').getPublicUrl(`grilla/${f.name}`);
-                        return { url: publicUrl, name: f.name };
-                    });
-                setGrillaImages(results);
+            if (isEcomoving) {
+                const { data: files } = await supabase.storage.from('imagenes-marketing').list('grilla');
+                if (files) {
+                    const results = files
+                        .filter(f => f.name !== '.emptyKeepFile' && !['grilla', 'catalogo', 'hero', 'marketing'].includes(f.name))
+                        .map(f => {
+                            const { data: { publicUrl } } = supabase.storage.from('imagenes-marketing').getPublicUrl(`grilla/${f.name}`);
+                            return { url: publicUrl, name: f.name };
+                        });
+                    setGrillaImages(results);
+                }
+            } else {
+                const { data: files } = await supabase.storage.from('grilla').list('');
+                if (files) {
+                    const results = files
+                        .filter(f => f.name !== '.emptyKeepFile' && f.name !== '.emptyFolderPlaceholder')
+                        .map(f => {
+                            const { data: { publicUrl } } = supabase.storage.from('grilla').getPublicUrl(f.name);
+                            return { url: publicUrl, name: f.name };
+                        });
+                    setGrillaImages(results);
+                }
             }
         } catch (err) {
             console.error('[GRILLA]', err);
         }
         setLoadingGrilla(false);
-    }, []);
+    }, [isEcomoving, projectPath]);
 
     useEffect(() => {
         if (pickerOpen && pickerTab === 'grilla' && grillaImages.length === 0) {
             fetchGrillaImages();
         }
     }, [pickerOpen, pickerTab, grillaImages.length, fetchGrillaImages]);
+
+    useEffect(() => {
+        if (pickerOpen && pickerTab === 'productos' && !isEcomoving && pickerImages.length === 0) {
+            searchPickerImages('');
+        }
+    }, [pickerOpen, pickerTab, isEcomoving, pickerImages.length, searchPickerImages]);
     // ───────────────────────────────────────────────────────────────────
 
     const handleGenerateAI = async () => {
@@ -359,6 +444,47 @@ export default function BlockInspector({
                         </div>
                     </div>
 
+                    {/* Gestión de Categorías (Solo en Brochure) */}
+                    {categories && categories.length > 0 && (
+                        <div style={{ padding: '14px 16px', borderBottom: '1px solid #141414', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontSize: '9px', color: '#00d4bd', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '1px' }}>CATEGORÍAS DE PORTAFOLIO</div>
+                                <button 
+                                    onClick={onAddCategory}
+                                    style={{ background: 'rgba(0,212,189,0.08)', border: '1px dashed rgba(0,212,189,0.3)', color: '#00d4bd', borderRadius: '4px', fontSize: '9px', fontWeight: 700, padding: '4px 8px', cursor: 'pointer' }}
+                                >
+                                    + AÑADIR
+                                </button>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '5px' }}>
+                                {categories.map((cat, idx) => (
+                                    <div key={cat + idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', padding: '6px 10px', borderRadius: '6px' }}>
+                                        <span style={{ fontSize: '11px', color: '#ccc' }}>{cat}</span>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button 
+                                                onClick={() => {
+                                                    const newVal = prompt('Renombrar categoría:', cat);
+                                                    if (newVal && newVal.trim() && onRenameCategory) {
+                                                        onRenameCategory(idx, newVal.trim());
+                                                    }
+                                                }}
+                                                style={{ background: 'none', border: 'none', color: '#666', fontSize: '10px', cursor: 'pointer' }}
+                                            >
+                                                ✏️
+                                            </button>
+                                            <button 
+                                                onClick={() => onDeleteCategory && onDeleteCategory(cat)}
+                                                style={{ background: 'none', border: 'none', color: '#ff6b6b', fontSize: '10px', cursor: 'pointer' }}
+                                            >
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Lista de bloques */}
                     <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px' }} className="custom-scroll">
                         <div style={{ fontSize: '9px', color: '#333', fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', padding: '4px 8px 8px' }}>
@@ -390,7 +516,7 @@ export default function BlockInspector({
                                     background: b.bgColor || '#111', border: '1px solid #222', position: 'relative'
                                 }}>
                                     {(b.gallery?.[0] || b.image) && (
-                                        <img src={b.gallery?.[0] || b.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                        <img src={resolveImageUrl(b.gallery?.[0] || b.image, projectPath)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                             onError={e => (e.target as HTMLImageElement).style.display = 'none'} />
                                     )}
                                 </div>
@@ -470,6 +596,21 @@ export default function BlockInspector({
                         >
                             <Plus size={14} />
                         </button>
+                        <button onClick={() => onDuplicate && onDuplicate(block.id)} title="Duplicar bloque" style={{
+                            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#aaa', cursor: 'pointer',
+                            padding: '6px', borderRadius: '6px', display: 'flex', transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={e => {
+                            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)';
+                            (e.currentTarget as HTMLElement).style.color = '#fff';
+                        }}
+                        onMouseLeave={e => {
+                            (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
+                            (e.currentTarget as HTMLElement).style.color = '#aaa';
+                        }}
+                        >
+                            <Copy size={14} />
+                        </button>
                         <button onClick={() => { if (confirm('¿Eliminar este bloque?')) onDelete(block.id); }}
                             style={{ background: 'rgba(255,68,68,0.08)', border: '1px solid rgba(255,68,68,0.2)', color: '#ff4444', cursor: 'pointer', padding: '6px', borderRadius: '6px', display: 'flex', transition: 'all 0.2s' }}
                             onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,68,68,0.15)'}
@@ -509,30 +650,34 @@ export default function BlockInspector({
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
                                 {/* PALETA DE MARCA RÁPIDA */}
                                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)', marginBottom: '5px' }}>
-                                    <div style={{ fontSize: '8px', color: '#555', fontWeight: 900, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '1px' }}>ADN COLOR SYSTEM</div>
-                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                        {[
-                                            { name: 'Turquesa', color: '#00d4bd' },
-                                            { name: 'Oro', color: '#d4af37' },
-                                            { name: 'Carbón', color: '#080808' },
-                                            { name: 'Oscuro', color: '#111111' },
-                                            { name: 'Grip', color: '#1a1a1a' },
-                                            { name: 'White', color: '#ffffff' }
-                                        ].map(brandColor => (
-                                            <button
-                                                key={brandColor.color}
-                                                onClick={() => update({ bgColor: brandColor.color })}
-                                                title={brandColor.name}
+                                    <div style={{ fontSize: '8px', color: '#555', fontWeight: 900, textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '1px' }}>COLOR DEL BLOQUE</div>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        {/* Custom Color Picker Button */}
+                                        <div style={{ position: 'relative', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <input 
+                                                type="color" 
+                                                value={block.bgColor || '#111111'} 
+                                                onChange={e => update({ bgColor: e.target.value })}
+                                                title="Personalizado"
                                                 style={{
-                                                    width: '20px', height: '20px', borderRadius: '50%', 
-                                                    backgroundColor: brandColor.color, 
-                                                    border: block.bgColor === brandColor.color ? '2px solid #00d4bd' : '1px solid rgba(255,255,255,0.1)',
-                                                    cursor: 'pointer', transition: 'transform 0.2s'
+                                                    position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer', zIndex: 2
                                                 }}
-                                                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
-                                                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                                             />
-                                        ))}
+                                            <div style={{
+                                                width: '22px', height: '22px', borderRadius: '50%',
+                                                background: 'conic-gradient(from 0deg, red, yellow, green, cyan, blue, magenta, red)',
+                                                border: '1px solid rgba(255,255,255,0.2)',
+                                                boxShadow: 'inset 0 0 2px rgba(0,0,0,0.5)',
+                                                transform: 'scale(1)', transition: 'transform 0.2s'
+                                            }}
+                                            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
+                                            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                                            />
+                                        </div>
+                                        {/* Display selected color code */}
+                                        <span style={{ fontSize: '9px', color: '#888', fontFamily: 'monospace', fontWeight: 900 }}>
+                                            {(block.bgColor || '#111111').toUpperCase()}
+                                        </span>
                                     </div>
                                 </div>
                                 <Row label="COLUMNA (1-48)">
@@ -553,7 +698,6 @@ export default function BlockInspector({
                         {/* ── TAB ENCABEZADO ── */}
                         {activeTab === 'header' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
-                                {/* El botón y campo de IA han sido movidos a la pestaña SEO (Editor SEO) */}
                                 <Row label="TÍTULO"><input type="text" value={block.blockTitle || ''} onChange={e => update({ blockTitle: e.target.value })} placeholder="Título del bloque..." style={inputStyle} /></Row>
                                 <Row label="PÁRRAFO"><textarea value={block.blockParagraph || ''} onChange={e => update({ blockParagraph: e.target.value })} placeholder="Descripción corta..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} /></Row>
                                 <div style={{ borderTop: '1px solid #151515', paddingTop: '11px' }}>
@@ -674,6 +818,20 @@ export default function BlockInspector({
                         {/* ── TAB CONTENIDO ── */}
                         {activeTab === 'content' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+                                {categories && categories.length > 0 && (
+                                    <Row label="CATEGORÍA (BROCHURE)">
+                                        <select 
+                                            value={block.category || block.label || ''} 
+                                            onChange={e => update({ category: e.target.value, label: e.target.value.toUpperCase() })} 
+                                            style={selectStyle}
+                                        >
+                                            <option value="">Sin Categoría</option>
+                                            {categories.map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
+                                    </Row>
+                                )}
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px' }}>
                                     <div><div style={labelStyle}>TIPO</div>
                                         <select value={block.type || 'image'} onChange={e => update({ type: e.target.value as any })} style={selectStyle}>
@@ -754,7 +912,7 @@ export default function BlockInspector({
 
                                                                         {/* ─ Contenido Productos ─ */}
                                                                         <div style={{ height: 200, overflowY: 'auto', padding: '7px' }} className="custom-scroll">
-                                                                            {!pickerQuery.trim() ? (
+                                                                            {!pickerQuery.trim() && isEcomoving ? (
                                                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '8px', color: '#333' }}>
                                                                                     <span style={{ fontSize: '22px' }}>🗂️</span>
                                                                                     <span style={{ fontSize: '10px', textAlign: 'center', lineHeight: 1.5, maxWidth: '160px' }}>
@@ -801,7 +959,7 @@ export default function BlockInspector({
                                                                                                 }}
                                                                                             >
                                                                                                 <img
-                                                                                                    src={img.url}
+                                                                                                    src={resolveImageUrl(img.url, projectPath)}
                                                                                                     alt={img.name}
                                                                                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                                                                                     onError={e => (e.target as HTMLImageElement).style.display = 'none'}
@@ -852,7 +1010,7 @@ export default function BlockInspector({
                                                                                             }}
                                                                                         >
                                                                                             <img
-                                                                                                src={img.url}
+                                                                                                src={resolveImageUrl(img.url, projectPath)}
                                                                                                 alt={img.name}
                                                                                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                                                                                 onError={e => (e.target as HTMLImageElement).style.display = 'none'}

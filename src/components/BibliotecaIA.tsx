@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseClient } from '@/lib/supabase';
 import { Image as ImageIcon, X, Search, Loader2, Package, ChevronDown, Grid, Sparkles } from 'lucide-react';
 import { motion, useDragControls } from 'framer-motion';
 
@@ -12,18 +12,35 @@ interface MediaImage {
     category?: string;
 }
 
+const resolveImageUrl = (img: string, projectPath?: string) => {
+  if (!img) return '';
+  if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('data:')) {
+    return img;
+  }
+  if (projectPath && img.startsWith('/')) {
+    if (img.startsWith('/api/local-asset')) return img;
+    return `/api/local-asset?path=${encodeURIComponent(projectPath.replace(/\\/g, '/') + '/public' + img)}`;
+  }
+  return img;
+};
+
 interface BibliotecaIAProps {
     onClose: () => void;
+    projectId?: string;
+    projectPath?: string;
 }
 
-export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
+export default function BibliotecaIA({ onClose, projectId, projectPath }: BibliotecaIAProps) {
+    const supabase = getSupabaseClient(projectId);
+    const isEcomoving = !projectId || projectId === 'ecomoving-public';
+
     // Data States
     const [marketingImages, setMarketingImages] = useState<MediaImage[]>([]);
     const [catalogImages, setCatalogImages] = useState<MediaImage[]>([]);
     const [grillaImages, setGrillaImages] = useState<MediaImage[]>([]);
     const [premiumImages, setPremiumImages] = useState<MediaImage[]>([]);
 
-    // UI States
+    // UI States (Consistent with Ecomoving)
     const [activeTab, setActiveTab] = useState<'premium' | 'catalog' | 'grilla' | 'marketing'>('premium');
     const [loadingMarketing, setLoadingMarketing] = useState(false);
     const [loadingCatalog, setLoadingCatalog] = useState(false);
@@ -35,30 +52,54 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
 
     const dragControls = useDragControls();
 
+
+
     // FETCH MARKETING (Source: Carpeta 'marketing' en Storage + Tabla opcional)
     const fetchMarketing = async () => {
         if (marketingImages.length > 0) return;
         setLoadingMarketing(true);
         try {
-            const { data } = await supabase.storage
-                .from('imagenes-marketing')
-                .list('', {
+            const bucketName = isEcomoving ? 'imagenes-marketing' : 'hero';
+            const folderPath = isEcomoving ? 'marketing' : '';
+            let listResult: any[] = [];
+            
+            const { data, error } = await supabase.storage
+                .from(bucketName)
+                .list(folderPath, {
                     limit: 100,
                     sortBy: { column: 'created_at', order: 'desc' }
                 });
 
             if (data) {
-                // Filtramos para ignorar carpetas y archivos ocultos, solo archivos en la raíz para marketing
-                const filteredData = data.filter(item =>
+                listResult = data;
+            }
+
+            // Fallback for Ecomoving to root bucket if 'marketing' folder is empty
+            if (isEcomoving && (!listResult || listResult.length === 0 || listResult.filter(item => item.name !== '.emptyFolderPlaceholder').length === 0)) {
+                const { data: rootData } = await supabase.storage
+                    .from('imagenes-marketing')
+                    .list('', {
+                        limit: 100,
+                        sortBy: { column: 'created_at', order: 'desc' }
+                    });
+                if (rootData) {
+                    listResult = rootData;
+                }
+            }
+
+            if (listResult) {
+                const filteredData = listResult.filter(item =>
                     item.name !== '.emptyFolderPlaceholder' &&
                     item.name !== '.emptyKeepFile' &&
-                    !['grilla', 'catalogo', 'hero', 'marketing'].includes(item.name)
+                    (!isEcomoving || !['grilla', 'catalogo', 'hero', 'marketing'].includes(item.name))
                 );
 
                 const images: MediaImage[] = filteredData.map(item => {
+                    const prefix = isEcomoving && listResult !== data ? '' : (isEcomoving ? 'marketing/' : '');
+                    
                     const { data: { publicUrl } } = supabase.storage
-                        .from('imagenes-marketing')
-                        .getPublicUrl(item.name);
+                        .from(bucketName)
+                        .getPublicUrl(`${prefix}${item.name}`);
 
                     return {
                         name: item.name || 'Imagen Marketing',
@@ -76,6 +117,12 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
 
     // FETCH CATALOG (Solo desde la tabla unificada 'productos')
     const fetchCatalog = async () => {
+        if (!isEcomoving) {
+            setCatalogImages([]);
+            setPremiumImages([]);
+            setLoadingCatalog(false);
+            return;
+        }
         if (catalogImages.length > 0) return;
         setLoadingCatalog(true);
         try {
@@ -125,18 +172,28 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
         if (grillaImages.length > 0) return;
         setLoadingGrilla(true);
         try {
+            const bucketName = isEcomoving ? 'imagenes-marketing' : 'grilla';
+            const folderPath = isEcomoving ? 'grilla' : '';
+            
             const { data, error } = await supabase.storage
-                .from('imagenes-marketing')
-                .list('grilla', {
+                .from(bucketName)
+                .list(folderPath, {
                     limit: 100,
                     sortBy: { column: 'created_at', order: 'desc' }
                 });
 
             if (data) {
-                const images: MediaImage[] = data.map(item => {
+                const filteredData = data.filter(item =>
+                    item.name !== '.emptyFolderPlaceholder' &&
+                    item.name !== '.emptyKeepFile' &&
+                    /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name)
+                );
+
+                const images: MediaImage[] = filteredData.map(item => {
+                    const path = folderPath ? `${folderPath}/${item.name}` : item.name;
                     const { data: { publicUrl } } = supabase.storage
-                        .from('imagenes-marketing')
-                        .getPublicUrl(`grilla/${item.name}`);
+                        .from(bucketName)
+                        .getPublicUrl(path);
 
                     return {
                         name: item.name || 'Imagen Grilla',
@@ -144,7 +201,7 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
                         source: 'grilla' as const,
                         category: 'General'
                     };
-                }).filter(img => img.url && !img.url.includes('.emptyKeepFile'));
+                });
 
                 setGrillaImages(images);
             }
@@ -154,25 +211,27 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
 
     // Effects
     useEffect(() => {
+        setActiveTab('premium');
+    }, [projectId]);
+
+    useEffect(() => {
         if (activeTab === 'marketing') fetchMarketing();
         else if (activeTab === 'catalog' || activeTab === 'premium') fetchCatalog();
         else if (activeTab === 'grilla') fetchGrilla();
-    }, [activeTab]);
-
-    // ...
+    }, [activeTab, projectId]);
 
     // Filters
     const categories = useMemo(() => {
-        if (activeTab === 'marketing') return [];
+        if (activeTab === 'marketing' || !isEcomoving) return [];
         let list = activeTab === 'grilla' ? grillaImages : (activeTab === 'premium' ? premiumImages : catalogImages);
         const cats = new Set(list.map(img => img.category).filter(Boolean));
         return ['Todas', ...Array.from(cats)].sort() as string[];
-    }, [catalogImages, grillaImages, premiumImages, activeTab]);
+    }, [catalogImages, grillaImages, premiumImages, activeTab, isEcomoving]);
 
     const currentImages = useMemo(() => {
         let list = activeTab === 'marketing' ? marketingImages : (activeTab === 'grilla' ? grillaImages : (activeTab === 'premium' ? premiumImages : catalogImages));
 
-        if ((activeTab === 'catalog' || activeTab === 'grilla' || activeTab === 'premium') && selectedCategory !== 'Todas') {
+        if (isEcomoving && (activeTab === 'catalog' || activeTab === 'grilla' || activeTab === 'premium') && selectedCategory !== 'Todas') {
             list = list.filter(img => img.category === selectedCategory);
         }
 
@@ -180,7 +239,7 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
             list = list.filter(img => img.name.toLowerCase().includes(search.toLowerCase()));
         }
         return list;
-    }, [activeTab, marketingImages, catalogImages, grillaImages, premiumImages, search, selectedCategory]);
+    }, [activeTab, marketingImages, catalogImages, grillaImages, premiumImages, search, selectedCategory, isEcomoving]);
 
     const loading = activeTab === 'marketing' ? loadingMarketing : (activeTab === 'grilla' ? loadingGrilla : loadingCatalog);
 
@@ -274,9 +333,9 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
             {/* Content */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} onPointerDown={(e) => e.stopPropagation()}>
 
-                {/* Search */}
-                <div style={{ padding: '16px' }}>
-                    <div style={{ position: 'relative' }}>
+                {/* Search & Upload */}
+                <div style={{ padding: '16px', display: 'flex', gap: '10px' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
                         <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#444' }} />
                         <input
                             type="text" placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)}
@@ -320,16 +379,20 @@ export default function BibliotecaIA({ onClose }: BibliotecaIAProps) {
                     ) : (
                         <>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
-                                {visibleImages.map((img, i) => (
-                                    <div key={`${img.url}-${i}`} draggable onDragStart={e => handleDragStart(e, img.url)}
-                                        style={{ aspectRatio: '1/1', backgroundColor: '#111', borderRadius: '4px', overflow: 'hidden', cursor: 'grab', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}
-                                    >
-                                        <img src={img.url} alt={img.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => (e.target as HTMLImageElement).style.display = 'none'} />
-                                        {activeTab === 'catalog' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-gold)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>PRODUCT</span>}
-                                        {activeTab === 'premium' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-gold)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>PREMIUM</span>}
-                                        {activeTab === 'grilla' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-turquoise)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>GRILLA</span>}
-                                    </div>
-                                ))}
+                                {visibleImages.map((img, i) => {
+                                    const previewUrl = resolveImageUrl(img.url, projectPath);
+                                    return (
+                                        <div key={`${img.url}-${i}`} draggable onDragStart={e => handleDragStart(e, img.url)}
+                                            style={{ aspectRatio: '1/1', backgroundColor: '#111', borderRadius: '4px', overflow: 'hidden', cursor: 'grab', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}
+                                        >
+                                            <img src={previewUrl} alt={img.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => (e.target as HTMLImageElement).style.display = 'none'} />
+                                            {activeTab === 'catalog' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-gold)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>PRODUCT</span>}
+                                            {activeTab === 'premium' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-gold)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>PREMIUM</span>}
+                                            {activeTab === 'grilla' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--accent-turquoise)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>GRILLA</span>}
+                                            {activeTab === 'marketing' && <span style={{ position: 'absolute', top: '4px', left: '4px', backgroundColor: 'var(--eco-accent-primary)', color: 'black', padding: '2px 5px', fontSize: '8px', fontWeight: '900', borderRadius: '2px' }}>MKT</span>}
+                                        </div>
+                                    );
+                                })}
                             </div>
 
                             {/* Load More */}

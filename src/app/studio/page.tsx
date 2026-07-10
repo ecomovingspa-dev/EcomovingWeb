@@ -32,7 +32,19 @@ const getVimeoId = (url: string) => {
   return match ? match[1] : null;
 };
 
-const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick, isSelected, previewMode }: {
+const resolveImageUrl = (img: string, projectPath?: string) => {
+  if (!img) return '';
+  if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('data:')) {
+    return img;
+  }
+  if (projectPath && img.startsWith('/')) {
+    if (img.startsWith('/api/local-asset')) return img;
+    return `/api/local-asset?path=${encodeURIComponent(projectPath.replace(/\\/g, '/') + '/public' + img)}`;
+  }
+  return img;
+};
+
+const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick, isSelected, previewMode, projectPath }: {
   block: any,
   designMode: boolean,
   assets: any,
@@ -40,7 +52,8 @@ const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick
   entryIndex: number,
   onClick?: () => void,
   isSelected?: boolean,
-  previewMode?: string
+  previewMode?: string,
+  projectPath?: string
 }) => {
   const currentMode = previewMode || 'desktop';
   let finalCol = block.col || 1;
@@ -78,6 +91,9 @@ const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick
   // Bugfix: ensure we actually have valid image URLs. If a block has NO images defined, fallback to a placeholder if design mode, else empty array.
   const validImages = baseImages.map((img: string) => img?.trim()).filter(Boolean);
   let images = (!isPeek && assets[block.id]) ? [assets[block.id]] : validImages;
+  
+  // Resolve relative paths for local development preview
+  images = images.map((img: string) => resolveImageUrl(img, projectPath));
   
   if (images.length === 0) {
       images = designMode ? [] : [];
@@ -364,7 +380,7 @@ const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick
           )}
 
           {/* Botón CTA inyectado por la IA */}
-          {block.link && (
+          {(block.link || block.buttonText) && (
             <div
               style={{
                 marginTop: 'auto', // Lo empuja hacia abajo si es que hay espacio
@@ -381,13 +397,13 @@ const BentoBlock = ({ block, designMode, assets, handleDrop, entryIndex, onClick
                 transition: 'transform 0.2s',
               }}
               onClick={(e) => {
-                if (!designMode) {
+                if (!designMode && block.link) {
                   e.stopPropagation();
                   window.location.href = block.link;
                 }
               }}
             >
-              VER DETALLE
+              {block.buttonText || 'VER DETALLE'}
             </div>
           )}
         </div>
@@ -488,6 +504,14 @@ export default function Home() {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isDeploying, setIsDeploying] = useState(false);
   const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
+
+  const [activeCategory, setActiveCategory] = useState('Todas');
+  const [editingCategoryIdx, setEditingCategoryIdx] = useState<number | null>(null);
+  const [editingCategoryVal, setEditingCategoryVal] = useState('');
+
+  useEffect(() => {
+    setActiveCategory('Todas');
+  }, [selectedProject]);
 
   const [previewSections, setPreviewSections] = useState<DynamicSection[] | null>(null);
 
@@ -680,6 +704,48 @@ export default function Home() {
     setSelectedBlockId(newBlock.id);
   }, [previewSections, content, updateSection]);
 
+  // ── Duplicar bloque seleccionado ──
+  const handleDuplicateBlock = useCallback((blockId: string) => {
+    let source = previewSections || content?.sections;
+    if (!Array.isArray(source)) return;
+
+    let foundBlock: any = null;
+    let foundSectionId: string = '';
+
+    for (const section of source) {
+      if (Array.isArray(section.blocks)) {
+        const blk = section.blocks.find((b: any) => b.id === blockId);
+        if (blk) {
+          foundBlock = blk;
+          foundSectionId = section.id;
+          break;
+        }
+      }
+    }
+
+    if (!foundBlock || !foundSectionId) return;
+
+    const [, h] = (foundBlock.span || '4x2').split('x').map(Number);
+    const newRow = (foundBlock.row || 1) + (h || 2) + 2;
+
+    const duplicatedBlock = {
+      ...foundBlock,
+      id: `block_dup_${Date.now()}`,
+      label: foundBlock.label ? `${foundBlock.label} (Copia)` : 'COPIA BLOQUE',
+      row: newRow,
+      tRow: foundBlock.tRow !== undefined ? foundBlock.tRow + (h || 2) + 2 : newRow,
+      mRow: foundBlock.mRow !== undefined ? foundBlock.mRow + (h || 2) + 2 : newRow,
+    };
+
+    const newSections = source.map((s: any) =>
+      s.id === foundSectionId ? { ...s, blocks: [...(s.blocks || []), duplicatedBlock] } : s
+    );
+
+    setPreviewSections(newSections);
+    updateSection('sections', newSections);
+    setSelectedBlockId(duplicatedBlock.id);
+  }, [previewSections, content, updateSection]);
+
   // ── Cambiar color de fondo del lienzo ──
   const handleCanvasBgChange = useCallback((color: string) => {
     const source = previewSections || content?.sections;
@@ -747,6 +813,64 @@ export default function Home() {
     }
   };
 
+  const handleAddCategory = () => {
+    const name = prompt('Ingrese el nombre de la nueva categoría:');
+    if (!name || !name.trim()) return;
+    const currentCats = content?.categories || ["Escritura Regenerativa", "Movilidad Urbana RPET", "Tecnología Circular", "Innovación en Biomateriales"];
+    if (currentCats.map((c: string) => c.toLowerCase()).includes(name.trim().toLowerCase())) {
+      alert('Esta categoría ya existe.');
+      return;
+    }
+    const updated = [...currentCats, name.trim()];
+    updateSection('categories', updated);
+  };
+
+  const handleRenameCategory = (idx: number, newVal: string) => {
+    setEditingCategoryIdx(null);
+    if (!newVal || !newVal.trim()) return;
+    const currentCats = [...(content?.categories || ["Escritura Regenerativa", "Movilidad Urbana RPET", "Tecnología Circular", "Innovación en Biomateriales"])];
+    const oldVal = currentCats[idx];
+    if (oldVal === newVal.trim()) return;
+
+    currentCats[idx] = newVal.trim();
+    updateSection('categories', currentCats);
+
+    // Actualizar también la categoría de los bloques asociados a este nombre
+    const source = previewSections || content?.sections;
+    if (Array.isArray(source)) {
+      const newSections = source.map((s: any) => {
+        if (!s.blocks) return s;
+        return {
+          ...s,
+          blocks: s.blocks.map((b: any) => {
+            const bCat = b.category || b.label || '';
+            if (bCat.trim().toLowerCase() === oldVal.trim().toLowerCase()) {
+              return { ...b, category: newVal.trim(), label: newVal.trim().toUpperCase() };
+            }
+            return b;
+          })
+        };
+      });
+      setPreviewSections(newSections);
+      updateSection('sections', newSections);
+    }
+
+    if (activeCategory === oldVal) {
+      setActiveCategory(newVal.trim());
+    }
+  };
+
+  const handleDeleteCategory = (catToDelete: string) => {
+    if (!confirm(`¿Está seguro de eliminar la categoría "${catToDelete}"? Los bloques asociados no se borrarán pero quedarán sin categoría asignada.`)) return;
+    const currentCats = content?.categories || ["Escritura Regenerativa", "Movilidad Urbana RPET", "Tecnología Circular", "Innovación en Biomateriales"];
+    const updated = currentCats.filter((c: string) => c !== catToDelete);
+    updateSection('categories', updated);
+
+    if (activeCategory === catToDelete) {
+      setActiveCategory('Todas');
+    }
+  };
+
   const handleDrop = async (e: React.DragEvent, blockId: string) => {
     e.preventDefault();
     const url = e.dataTransfer.getData('image_url')?.trim();
@@ -805,7 +929,7 @@ export default function Home() {
     }
   }
 
-  const hasBlocks = masterSection && masterSection.blocks && masterSection.blocks.length > 0;
+  const hasBlocks = (masterSection && masterSection.blocks && masterSection.blocks.length > 0) || designMode || !!content?.hideHero || !!content?.hero?.hidden;
 
   return (
     <main className={designMode ? 'design-mode' : ''} style={{ backgroundColor: 'var(--eco-bg-primary)', color: 'white', minHeight: '100vh', fontFamily: 'var(--font-body)' }}>
@@ -904,85 +1028,169 @@ export default function Home() {
           )}
 
       {/* --- HERO SECTION --- */}
-      <section
-        className='hero-premium'
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => handleDrop(e, 'hero')}
-        style={{
-          height: '100vh',
-          display: 'flex',
-          alignItems: (heroContent as any).text_align_v === 'top' ? 'flex-start' : (heroContent as any).text_align_v === 'bottom' ? 'flex-end' : 'center',
-          justifyContent: (heroContent as any).text_align_h === 'left' ? 'flex-start' : (heroContent as any).text_align_h === 'right' ? 'flex-end' : 'center',
-          position: 'relative',
-          overflow: 'hidden',
-          padding: '120px 50px' // Aire extra para cuando el texto se alinea a los bordes
-        }}
-      >
-        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
-          <AnimatePresence mode="popLayout">
-            {(heroImages[currentHeroSlide] || assets.hero) ? (
-              <motion.img
-                key={currentHeroSlide}
-                initial={{ opacity: 0, scale: 1.05 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 1.5, ease: [0.4, 0, 0.2, 1] }}
-                src={heroImages[currentHeroSlide] || assets.hero}
-                alt="Ecomoving"
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            ) : null}
-          </AnimatePresence>
-          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, transparent 20%, rgba(0,0,0,0.8) 120%)' }} />
-        </div>
-
-        {/* Indicadores de Slide */}
-        {heroImages.length > 1 && (
-          <div style={{ position: 'absolute', bottom: '40px', left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: '10px', zIndex: 10 }}>
-            {heroImages.map((_, idx) => (
-              <div
-                key={idx}
-                onClick={() => setCurrentHeroSlide(idx)}
-                style={{
-                  width: idx === currentHeroSlide ? '30px' : '8px',
-                  height: '4px',
-                  borderRadius: '2px',
-                  background: idx === currentHeroSlide ? 'var(--eco-accent-primary)' : 'rgba(255,255,255,0.3)',
-                  cursor: 'pointer',
-                  transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
-                }}
-              />
-            ))}
+      {(!content?.hideHero && !content?.hero?.hidden) && (
+        <section
+          className='hero-premium'
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => handleDrop(e, 'hero')}
+          style={{
+            height: '100vh',
+            display: 'flex',
+            alignItems: (heroContent as any).text_align_v === 'top' ? 'flex-start' : (heroContent as any).text_align_v === 'bottom' ? 'flex-end' : 'center',
+            justifyContent: (heroContent as any).text_align_h === 'left' ? 'flex-start' : (heroContent as any).text_align_h === 'right' ? 'flex-end' : 'center',
+            position: 'relative',
+            overflow: 'hidden',
+            padding: '120px 50px' // Aire extra para cuando el texto se alinea a los bordes
+          }}
+        >
+          <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+            <AnimatePresence mode="popLayout">
+              {(heroImages[currentHeroSlide] || assets.hero) ? (
+                <motion.img
+                  key={currentHeroSlide}
+                  initial={{ opacity: 0, scale: 1.05 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 1.5, ease: [0.4, 0, 0.2, 1] }}
+                  src={heroImages[currentHeroSlide] || assets.hero}
+                  alt="Ecomoving"
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : null}
+            </AnimatePresence>
+            <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, transparent 20%, rgba(0,0,0,0.8) 120%)' }} />
           </div>
-        )}
-        <div style={{ position: 'relative', zIndex: 2, textAlign: (heroContent as any).text_align_h || 'center', maxWidth: '1000px', width: '100%' }}>
-          {(heroContent as any).title1 && (
-            <motion.h1
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 1 }}
-              style={{ fontSize: (heroContent as any).titleSize || '5rem', fontFamily: 'var(--font-heading)', lineHeight: (heroContent as any).titleLineHeight || 1, marginBottom: '20px', textShadow: '0 4px 20px rgba(0,0,0,0.8)' }}
-            >
-              {(heroContent as any).title1}
-            </motion.h1>
+
+          {/* Indicadores de Slide */}
+          {heroImages.length > 1 && (
+            <div style={{ position: 'absolute', bottom: '40px', left: 0, right: 0, display: 'flex', justifyContent: 'center', gap: '10px', zIndex: 10 }}>
+              {heroImages.map((_, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => setCurrentHeroSlide(idx)}
+                  style={{
+                    width: idx === currentHeroSlide ? '30px' : '8px',
+                    height: '4px',
+                    borderRadius: '2px',
+                    background: idx === currentHeroSlide ? 'var(--eco-accent-primary)' : 'rgba(255,255,255,0.3)',
+                    cursor: 'pointer',
+                    transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+                  }}
+                />
+              ))}
+            </div>
           )}
-          {(heroContent as any).paragraph1 && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1, delay: 0.5 }}
-              style={{ fontSize: (heroContent as any).paragraphSize || '1.5rem', color: '#ccc', marginBottom: '40px', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,0.9)', lineHeight: (heroContent as any).paragraphLineHeight || 1.4 }}
-            >
-              {(heroContent as any).paragraph1}
-            </motion.p>
-          )}
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
-            <Link href={(heroContent as any).cta_link || '/catalogo'} className='cta-luxury' style={{ display: 'inline-block', padding: '15px 40px', background: 'var(--eco-accent-primary)', color: '#000', fontWeight: 900, borderRadius: '2px', letterSpacing: '2px', textDecoration: 'none', boxShadow: '0 0 20px rgba(0,212,189,0.4)' }}>
-              {(heroContent as any).cta_text || 'EXPLORAR CATÁLOGO'}
-            </Link>
-          </motion.div>
+          <div style={{ position: 'relative', zIndex: 2, textAlign: (heroContent as any).text_align_h || 'center', maxWidth: '1000px', width: '100%' }}>
+            {(heroContent as any).title1 && (
+              <motion.h1
+                initial={{ opacity: 0, y: 50 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 1 }}
+                style={{ fontSize: (heroContent as any).titleSize || '5rem', fontFamily: 'var(--font-heading)', lineHeight: (heroContent as any).titleLineHeight || 1, marginBottom: '20px', textShadow: '0 4px 20px rgba(0,0,0,0.8)' }}
+              >
+                {(heroContent as any).title1}
+              </motion.h1>
+            )}
+            {(heroContent as any).paragraph1 && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 1, delay: 0.5 }}
+                style={{ fontSize: (heroContent as any).paragraphSize || '1.5rem', color: '#ccc', marginBottom: '40px', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,0.9)', lineHeight: (heroContent as any).paragraphLineHeight || 1.4 }}
+              >
+                {(heroContent as any).paragraph1}
+              </motion.p>
+            )}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
+              <Link href={(heroContent as any).cta_link || '/catalogo'} className='cta-luxury' style={{ display: 'inline-block', padding: '15px 40px', background: 'var(--eco-accent-primary)', color: '#000', fontWeight: 900, borderRadius: '2px', letterSpacing: '2px', textDecoration: 'none', boxShadow: '0 0 20px rgba(0,212,189,0.4)' }}>
+                {(heroContent as any).cta_text || 'EXPLORAR CATÁLOGO'}
+              </Link>
+            </motion.div>
+          </div>
+        </section>
+      )}
+
+      {/* --- MENÚ DE CATEGORÍAS (Para Brochure / Portafolio) --- */}
+      {content?.isBrochure && (
+        <div className="categories-header-brochure" style={{
+          width: '100%',
+          background: '#030303',
+          borderBottom: '1px solid rgba(255,255,255,0.02)',
+          position: 'sticky',
+          top: showAdminUI ? '75px' : '0',
+          zIndex: 100,
+          padding: '20px 50px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '20px',
+          flexWrap: 'wrap'
+        }}>
+          {/* Logo Ecomoving SpA */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img 
+              src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" 
+              alt="Ecomoving SpA" 
+              style={{ height: '28px', objectFit: 'contain' }} 
+            />
+          </div>
+
+          {/* Selector de Categorías (Pildoras Estilo Prototipo) */}
+          <div style={{ 
+            display: 'flex', 
+            background: 'rgba(255,255,255,0.01)', 
+            border: '1px solid rgba(255,255,255,0.04)', 
+            borderRadius: '40px', 
+            padding: '4px 6px',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            {['Todas', ...(content.categories || ["Escritura Regenerativa", "Movilidad Urbana RPET", "Tecnología Circular", "Innovación en Biomateriales"])].map((cat: string) => {
+              const isSelected = activeCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  style={{
+                    padding: '8px 18px',
+                    background: isSelected ? 'rgba(0, 212, 189, 0.08)' : 'transparent',
+                    color: isSelected ? '#00d4bd' : 'rgba(255,255,255,0.6)',
+                    border: isSelected ? '1px solid rgba(0, 212, 189, 0.2)' : '1px solid transparent',
+                    borderRadius: '30px',
+                    fontSize: '11px',
+                    fontWeight: isSelected ? 800 : 500,
+                    textTransform: 'none',
+                    letterSpacing: '0.5px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                    fontFamily: 'var(--font-body)'
+                  }}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Control Solar / Tema (Lado Derecho) */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <button style={{
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '50%',
+              width: '36px',
+              height: '36px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'rgba(255,255,255,0.5)',
+              cursor: 'pointer'
+            }}>
+              ☀️
+            </button>
+          </div>
         </div>
-      </section>
+      )}
 
 
 
@@ -990,7 +1198,7 @@ export default function Home() {
       <section id="infinite-canvas" style={{
         minHeight: hasBlocks ? '100vh' : '0', // Ocultamos la franja negra si no hay bloques
         display: hasBlocks ? 'block' : 'none', // Directamente lo desaparecemos visualmente
-        background: 'var(--eco-bg-primary)', // Match con el fondo de la página
+        background: masterSection?.bgColor || 'var(--eco-bg-primary)', // Match con el fondo de la página
         position: 'relative',
         padding: '0'
       }}>
@@ -1017,7 +1225,7 @@ export default function Home() {
           padding: hasBlocks ? '20px' : '0',
           width: '100%',
           maxWidth: '100%',
-          backgroundColor: 'var(--eco-bg-primary)',
+          backgroundColor: 'transparent',
           backgroundImage: designMode ? `
             linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
             linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px)
@@ -1026,24 +1234,42 @@ export default function Home() {
           overflow: 'visible'
         }}>
 
-          {hasBlocks && [...masterSection.blocks].sort((a: any, b: any) => {
-            // Sort primarily by row (top to bottom)
-            if (a.row !== b.row) return (a.row || 0) - (b.row || 0);
-            // Sort secondarily by col (left to right)
-            return (a.col || 0) - (b.col || 0);
-          }).map((block: any, idx: number) => (
-            <BentoBlock
-              key={block.id}
-              block={block}
-              designMode={designMode}
-              assets={assets}
-              entryIndex={idx}
-              isSelected={selectedBlockId === block.id}
-              previewMode={previewMode}
-              onClick={() => setSelectedBlockId(selectedBlockId === block.id ? null : block.id)}
-              handleDrop={(e: any) => handleDrop(e, block.id)}
-            />
-          ))}
+           {hasBlocks && (() => {
+             const rawBlocks = masterSection.blocks || [];
+             const minRow = rawBlocks.length > 0 ? Math.min(...rawBlocks.map((b: any) => b.row || 1)) : 1;
+             const shiftOffset = (content?.isBrochure || content?.hideHero) && minRow > 1 ? minRow - 1 : 0;
+
+             return [...rawBlocks]
+              .filter((block: any) => {
+                if (!content?.isBrochure || activeCategory === 'Todas') return true;
+                const blockCat = (block.category || block.label || '').trim().toLowerCase();
+                const activeCat = activeCategory.trim().toLowerCase();
+                return blockCat === activeCat;
+              })
+              .sort((a: any, b: any) => {
+                if (a.row !== b.row) return (a.row || 0) - (b.row || 0);
+                return (a.col || 0) - (b.col || 0);
+              }).map((block: any, idx: number) => {
+                const shiftedBlock = {
+                  ...block,
+                  row: block.row - shiftOffset
+                };
+                return (
+                  <BentoBlock
+                    key={shiftedBlock.id}
+                    block={shiftedBlock}
+                    designMode={designMode}
+                    assets={assets}
+                    entryIndex={idx}
+                    isSelected={selectedBlockId === shiftedBlock.id}
+                    previewMode={previewMode}
+                    projectPath={selectedProject?.path}
+                    onClick={() => setSelectedBlockId(selectedBlockId === shiftedBlock.id ? null : shiftedBlock.id)}
+                    handleDrop={(e: any) => handleDrop(e, shiftedBlock.id)}
+                  />
+                );
+              });
+           })()}
 
         </div>
       </section>
@@ -1082,10 +1308,17 @@ export default function Home() {
           setPreviewSections(newContent);
         }
       }} selectedBlockId={selectedBlockId} />
-      {isBibliotecaOpen && <BibliotecaIA onClose={() => setIsBibliotecaOpen(false)} />}
+      {isBibliotecaOpen && (
+        <BibliotecaIA 
+          onClose={() => setIsBibliotecaOpen(false)} 
+          projectId={selectedProject?.id}
+          projectPath={selectedProject?.path}
+        />
+      )}
       <CatalogHub
         isOpen={isCatalogHubOpen}
         onClose={() => setIsCatalogHubOpen(false)}
+        projectId={selectedProject?.id}
         projectPath={selectedProject?.path || ''}
         parentContent={content}
         parentUpdateSection={updateSection}
@@ -1125,12 +1358,19 @@ export default function Home() {
               block={mappedBlock}
               allBlocks={allBlocks}
               canvasBgColor={ms?.bgColor || '#000000'}
+              categories={content?.categories}
+              onAddCategory={handleAddCategory}
+              onRenameCategory={handleRenameCategory}
+              onDeleteCategory={handleDeleteCategory}
               onClose={() => setDesignMode(false)}
               onUpdate={handleBlockUpdate}
               onDelete={handleBlockDelete}
+              onDuplicate={handleDuplicateBlock}
               onAddBlock={handleAddBlock}
               onSelectBlock={(id) => setSelectedBlockId(id || null)}
               onCanvasBgChange={handleCanvasBgChange}
+              projectId={selectedProject?.id}
+              projectPath={selectedProject?.path}
             />
           );
         })()}

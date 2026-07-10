@@ -21,6 +21,7 @@ export interface HeroContent {
     paragraphLineHeight?: string;
     titleSize?: string;
     paragraphSize?: string;
+    hidden?: boolean;
 }
 
 export interface LayoutBlock {
@@ -78,6 +79,7 @@ export interface LayoutBlock {
     buttonText?: string;
     buttonSku?: string;
     textProtection?: boolean;
+    category?: string;
 }
 
 export interface DynamicSection {
@@ -131,6 +133,7 @@ export interface SectionContent {
 export interface WebContent {
     hero: HeroContent;
     sections: DynamicSection[];
+    hideHero?: boolean;
     [key: string]: any;
 }
 

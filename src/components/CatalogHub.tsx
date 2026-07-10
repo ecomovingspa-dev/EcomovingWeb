@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, Trash2, Download, Layers, Loader2, Save, Image as ImageIcon, Check, Star, RefreshCw, Plus, Sparkles, Send, Globe, RotateCw, FlipHorizontal, Maximize2, Minimize2, Square, RectangleHorizontal, RectangleVertical, ChevronRight, Cloud, FolderOpen, Zap } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseClient } from '@/lib/supabase';
 import { generateMarketingAI, generateWebAI, generateSEOFilenameAI, MarketingContent, WebSectionContent, getMarketingHTMLTemplate } from '@/lib/gemini';
 import { useWebContent, WebContent } from '@/hooks/useWebContent';
 import { fetchDriveItems, DriveItem } from '@/services/driveService';
@@ -30,6 +30,7 @@ interface PendingProduct {
 interface CatalogHubProps {
     isOpen: boolean;
     onClose: () => void;
+    projectId?: string;
     projectPath?: string;
     parentContent?: WebContent;
     parentUpdateSection?: (section: keyof WebContent, newContentData: any) => Promise<boolean>;
@@ -38,10 +39,13 @@ interface CatalogHubProps {
 export default function CatalogHub({
     isOpen,
     onClose,
+    projectId,
     projectPath,
     parentContent,
     parentUpdateSection
 }: CatalogHubProps) {
+    const supabase = getSupabaseClient(projectId);
+    const isEcomoving = !projectId || projectId === 'ecomoving-public';
     const [pendingProducts, setPendingProducts] = useState<PendingProduct[]>([]);
     const [selectedProduct, setSelectedProduct] = useState<PendingProduct | null>(null);
 
@@ -274,6 +278,11 @@ export default function CatalogHub({
     }, [insumoProductSearch, pendingProducts]);
 
     const fetchPendingProducts = async () => {
+        if (!isEcomoving) {
+            setPendingProducts([]);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             // Ahora solo consultamos 'productos', que contiene tanto los aprobados como los pendientes (travasije)
@@ -595,15 +604,17 @@ export default function CatalogHub({
             const publicUrls: string[] = [];
             const timestamp = Date.now();
             const extension = insumoDestination === 'marketing' ? 'jpg' : 'webp';
-            const folder = insumoDestination === 'gallery' ? 'grilla' : insumoDestination === 'catalog' ? 'catalogo' : insumoDestination;
+            const folder = isEcomoving
+                ? (insumoDestination === 'gallery' ? 'grilla' : insumoDestination === 'catalog' ? 'catalogo' : insumoDestination)
+                : (insumoDestination === 'gallery' ? 'grilla' : insumoDestination === 'catalog' ? 'catalog' : insumoDestination);
 
             for (let i = 0; i < insumoOptimizedBlobs.length; i++) {
                 const blob = insumoOptimizedBlobs[i];
                 const fileName = `INSUMO-${timestamp}-${i}.${extension}`;
 
-                // Si es marketing, NO subimos todavía al storage (evitar guardado prematuro)
+                // Si es marketing en Ecomoving, NO subimos todavía al storage (evitar guardado prematuro)
                 // Nota: El flujo de marketing parece estar diseñado para una sola imagen "preparada"
-                if (insumoDestination === 'marketing' && i === 0) {
+                if (isEcomoving && insumoDestination === 'marketing' && i === 0) {
                     const localUrl = URL.createObjectURL(blob);
                     // @seo_mkt: Imagen EXCLUSIVA del tab Marketing — no contamina Hero ni Grilla
                     setMarketingImage(localUrl);
@@ -632,17 +643,30 @@ export default function CatalogHub({
                     return;
                 }
 
-                // Para otros destinos, subimos al storage
-                const filePath = `${folder}/${fileName}`;
+                let uploadedUrl = '';
+                let bucketName = 'imagenes-marketing';
+                let filePath = `${folder}/${fileName}`;
+
+                if (!isEcomoving) {
+                    if (insumoDestination === 'gallery') {
+                        bucketName = 'grilla';
+                        filePath = fileName;
+                    } else {
+                        bucketName = 'hero';
+                        filePath = fileName;
+                    }
+                }
+
                 const { error } = await supabase.storage
-                    .from('imagenes-marketing')
+                    .from(bucketName)
                     .upload(filePath, blob, { contentType: extension === 'jpg' ? 'image/jpeg' : 'image/webp' });
 
                 if (error) throw error;
 
-                const { data: { publicUrl: uploadedUrl } } = supabase.storage
-                    .from('imagenes-marketing')
+                const { data: { publicUrl: urlResult } } = supabase.storage
+                    .from(bucketName)
                     .getPublicUrl(filePath);
+                uploadedUrl = urlResult;
 
                 publicUrls.push(uploadedUrl);
             }
@@ -656,20 +680,28 @@ export default function CatalogHub({
             if (insumoDestination === 'hero' && insumoOptimizedBlobs.length > 0) {
                 const heroBlob = insumoOptimizedBlobs[0];
                 const grillaFileName = `INSUMO-HERO-${timestamp}-0.webp`;
-                const grillaPath = `grilla/${grillaFileName}`;
-                try {
-                    await supabase.storage
-                        .from('imagenes-marketing')
-                        .upload(grillaPath, heroBlob, { contentType: 'image/webp' });
-                    // No sobrescribimos activeImage — la URL del Hero sigue siendo la principal
-                } catch (grillaErr) {
-                    // No bloquear el flujo si falla la copia a grilla
-                    console.warn('@adn: No se pudo duplicar imagen en grilla:', grillaErr);
+                if (isEcomoving) {
+                    const grillaPath = `grilla/${grillaFileName}`;
+                    try {
+                        await supabase.storage
+                            .from('imagenes-marketing')
+                            .upload(grillaPath, heroBlob, { contentType: 'image/webp' });
+                    } catch (grillaErr) {
+                        console.warn('@adn: No se pudo duplicar imagen en grilla:', grillaErr);
+                    }
+                } else {
+                    try {
+                        await supabase.storage
+                            .from('grilla')
+                            .upload(grillaFileName, heroBlob, { contentType: 'image/webp' });
+                    } catch (grillaErr) {
+                        console.warn('No se pudo duplicar imagen en grilla:', grillaErr);
+                    }
                 }
             }
 
             if (insumoDestination === 'catalog') {
-                if (insumoCatalogAction === 'update' && selectedProduct) {
+                if (isEcomoving && insumoCatalogAction === 'update' && selectedProduct) {
                     // Actualizar producto seleccionado
                     const updatedImages = insumoUpdateMode === 'replace'
                         ? publicUrls
@@ -697,43 +729,47 @@ export default function CatalogHub({
                         found_at: new Date().toISOString()
                     });
                     setActiveManualImage(publicUrls[0]);
-                    setActiveTab('catalog');
+                    if (isEcomoving) {
+                        setActiveTab('catalog');
+                    }
                 }
             } else if (insumoDestination === 'gallery') {
-                // Auto-asignar a la colección seleccionada directamente
-                try {
-                    const { data: current } = await supabase
-                        .from('web_contenido')
-                        .select('content')
-                        .eq('section', 'gallery')
-                        .single();
+                // Auto-asignar a la colección seleccionada directamente En Ecomoving
+                if (isEcomoving) {
+                    try {
+                        const { data: current } = await supabase
+                            .from('web_contenido')
+                            .select('content')
+                            .eq('section', 'gallery')
+                            .single();
 
-                    const content = current?.content || { sections: [] };
-                    const updatedSections = (content.sections || []).map((sec: any) => {
-                        if (sec.id === selectedGallerySection || sec.title1 === selectedGallerySection) {
-                            const currentGallery = Array.isArray(sec.gallery) ? sec.gallery : [];
-                            return { ...sec, gallery: [...currentGallery, ...publicUrls] };
-                        }
-                        return sec;
-                    });
+                        const content = current?.content || { sections: [] };
+                        const updatedSections = (content.sections || []).map((sec: any) => {
+                            if (sec.id === selectedGallerySection || sec.title1 === selectedGallerySection) {
+                                const currentGallery = Array.isArray(sec.gallery) ? sec.gallery : [];
+                                return { ...sec, gallery: [...currentGallery, ...publicUrls] };
+                            }
+                            return sec;
+                        });
 
-                    await supabase
-                        .from('web_contenido')
-                        .upsert({
-                            section: 'gallery',
-                            content: { ...content, sections: updatedSections },
-                            updated_by: 'CatalogHub-Insumo'
-                        }, { onConflict: 'section' });
+                        await supabase
+                            .from('web_contenido')
+                            .upsert({
+                                section: 'gallery',
+                                content: { ...content, sections: updatedSections },
+                                updated_by: 'CatalogHub-Insumo'
+                            }, { onConflict: 'section' });
 
-                } catch (err) {
-                    console.error('Error auto-asignando a grilla:', err);
+                    } catch (err) {
+                        console.error('Error auto-asignando a grilla:', err);
+                    }
+                    setActiveTab('gallery');
+                    fetchGallery(selectedGallerySection);
                 }
-                setActiveTab('gallery');
-                fetchGallery(selectedGallerySection);
             } else if (insumoDestination === 'hero') {
-                setActiveTab('hero');
+                if (isEcomoving) setActiveTab('hero');
             } else if (insumoDestination === 'marketing') {
-                setActiveTab('marketing');
+                if (isEcomoving) setActiveTab('marketing');
             }
 
             // Protocolo @constructor: Limpiador de imagen post-envío
@@ -752,9 +788,9 @@ export default function CatalogHub({
             }
 
             alert(`¡${publicUrls.length} imágenes enviadas a ${insumoDestination.toUpperCase()} con éxito!`);
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error enviando insumo:', err);
-            alert('Error al enviar el insumo');
+            alert(`Error al enviar el insumo: ${err?.message || String(err)}`);
         } finally {
             setIsRoutingInsumo(false);
         }
@@ -820,6 +856,10 @@ export default function CatalogHub({
 
     // Funciones para Gestión de GRILLA
     const fetchGallery = async (section: string) => {
+        if (!isEcomoving) {
+            setGalleryImages([]);
+            return;
+        }
         try {
             const { data, error } = await supabase
                 .from('web_contenido')
@@ -1130,10 +1170,10 @@ export default function CatalogHub({
 
                     // 1. Determinar dimensiones base según Target
                     // 'hero'  → 2560px máx / calidad 0.93 (pantallas 2K/4K, full-width hero banner)
-                    // 'web'   → 1600px máx / calidad 0.82 (catálogo, grilla)
+                    // 'web'   → 1100px máx / calidad 0.78 (catálogo, grilla)
                     // 'email' → 800px máx  / calidad 0.75 (JPG para email)
-                    const MAX_WIDTH = target === 'hero' ? 2560 : target === 'web' ? 1600 : 800;
-                    const QUALITY = target === 'hero' ? 0.93 : target === 'web' ? 0.82 : 0.75;
+                    const MAX_WIDTH = target === 'hero' ? 2560 : target === 'web' ? 1100 : 800;
+                    const QUALITY = target === 'hero' ? 0.93 : target === 'web' ? 0.78 : 0.75;
                     const MIME_TYPE = target === 'email' ? 'image/jpeg' : 'image/webp';
 
                     let baseWidth = img.width;
