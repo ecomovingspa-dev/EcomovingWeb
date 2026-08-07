@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseClient } from '@/lib/supabase';
 
 export interface HeroContent {
     title1: string;
@@ -148,10 +148,11 @@ const defaultContent: WebContent = {
     sections: []
 };
 
-export function useWebContent(projectPath?: string) {
+export function useWebContent(projectPath?: string, projectId?: string) {
     const [content, setContent] = useState<WebContent>(defaultContent);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const supabaseClient = getSupabaseClient(projectId);
 
     const fetchContent = useCallback(async () => {
         try {
@@ -208,7 +209,7 @@ export function useWebContent(projectPath?: string) {
             }
 
             // PRIORIDAD 2: SUPABASE (Modo Producción o Fallback)
-            const { data, error: fetchError } = await supabase
+            const { data, error: fetchError } = await supabaseClient
                 .from('web_contenido')
                 .select('section, content');
 
@@ -269,7 +270,7 @@ export function useWebContent(projectPath?: string) {
 
             // 1. Update Supabase
             try {
-                const { error: updateError } = await supabase
+                const { error: updateError } = await supabaseClient
                     .from('web_contenido')
                     .upsert({
                         section,
@@ -311,11 +312,11 @@ export function useWebContent(projectPath?: string) {
         fetchContent();
         if (!projectPath) {
             const channelId = `web-content-sync-${Math.random().toString(36).substring(7)}`;
-            const channel = supabase.channel(channelId).on('postgres_changes' as any, { event: '*', schema: 'public', table: 'web_contenido' }, () => fetchContent());
+            const channel = supabaseClient.channel(channelId).on('postgres_changes' as any, { event: '*', schema: 'public', table: 'web_contenido' }, () => fetchContent());
             channel.subscribe();
-            return () => { supabase.removeChannel(channel); };
+            return () => { supabaseClient.removeChannel(channel); };
         }
-    }, [fetchContent, projectPath]);
+    }, [fetchContent, projectPath, supabaseClient]);
 
     return { content, loading, error, refetch: fetchContent, updateSection };
 }

@@ -14,15 +14,18 @@ export async function GET(request: Request) {
         const fileBuffer = fs.readFileSync(filePath);
         const ext = filePath.split('.').pop()?.toLowerCase();
 
-        let contentType = 'image/jpeg';
+        let contentType = 'application/octet-stream';
         if (ext === 'png') contentType = 'image/png';
-        if (ext === 'webp') contentType = 'image/webp';
-        if (ext === 'gif') contentType = 'image/gif';
+        else if (ext === 'webp') contentType = 'image/webp';
+        else if (ext === 'gif') contentType = 'image/gif';
+        else if (ext === 'jpg' || ext === 'jpeg') contentType = 'image/jpeg';
+        else if (ext === 'css') contentType = 'text/css; charset=utf-8';
+        else if (ext === 'js') contentType = 'application/javascript; charset=utf-8';
 
         return new Response(fileBuffer, {
             headers: {
                 'Content-Type': contentType,
-                'Cache-Control': 'public, max-age=31536000, immutable'
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
             }
         });
 

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers, Rocket, Send, CloudUpload, Monitor, Tablet, Smartphone, ShieldCheck, Save } from 'lucide-react';
+import { Crop, FileText, Image as ImageIcon, Layout, Lock, Unlock, Layers, Rocket, Send, CloudUpload, Monitor, Tablet, Smartphone, ShieldCheck, Save, Plus, Edit2, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
 import { useWebContent, SectionContent, GridCell, DynamicSection, WebContent } from '@/hooks/useWebContent';
 import EditorSEO from '@/components/EditorSEO';
@@ -463,7 +463,7 @@ export default function Home() {
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
 
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const { content, loading: contentLoading, refetch: refetchContent, updateSection } = useWebContent(selectedProject?.path || '');
+  const { content, loading: contentLoading, refetch: refetchContent, updateSection } = useWebContent(selectedProject?.path || '', selectedProject?.id || '');
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -502,7 +502,6 @@ export default function Home() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [designMode, setDesignMode] = useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [isDeploying, setIsDeploying] = useState(false);
   const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
 
   const [activeCategory, setActiveCategory] = useState('Todas');
@@ -795,24 +794,6 @@ export default function Home() {
     } catch { /* safe to ignore */ }
   }, [content, previewSections]);
 
-  const handleDeploy = async () => {
-    if (!confirm('¿Estás seguro de enviar los cambios a GitHub? Esto actualizará el sitio web público.')) return;
-    setIsDeploying(true);
-    try {
-      const res = await fetch('/api/git-sync', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        alert('¡ÉXITO! ' + data.message);
-      } else {
-        alert('ERROR: ' + data.error);
-      }
-    } catch (err) {
-      alert('Error de conexión con el servidor de despliegue.');
-    } finally {
-      setIsDeploying(false);
-    }
-  };
-
   const handleAddCategory = () => {
     const name = prompt('Ingrese el nombre de la nueva categoría:');
     if (!name || !name.trim()) return;
@@ -947,21 +928,57 @@ export default function Home() {
       {showAdminUI && (
         <nav className='nav-master'>
           <div className='logo-brand' style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img" />
-          <span style={{ fontSize: '10px', background: 'var(--eco-accent-primary)', color: 'black', padding: '2px 8px', borderRadius: '4px', fontWeight: 900, letterSpacing: '1px' }}>STUDIO</span>
-        </div>
+            <img 
+              src={selectedProject?.id === 'tiny-puertecillo'
+                ? "https://xqybckftzuupkmbwocrj.supabase.co/storage/v1/object/public/logo/logo_negro_clean.png"
+                : "https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png"
+              } 
+              alt="Logo" 
+              className="logo-img" 
+              style={selectedProject?.id === 'tiny-puertecillo' ? { height: '32px', filter: 'invert(1)' } : {}}
+            />
+            <span style={{ 
+              fontSize: '10px', 
+              background: selectedProject?.id === 'tiny-puertecillo' ? '#964828' : 'var(--eco-accent-primary)', 
+              color: 'white', 
+              padding: '2px 8px', 
+              borderRadius: '4px', 
+              fontWeight: 900, 
+              letterSpacing: '1px' 
+            }}>
+              STUDIO
+            </span>
+          </div>
+          {selectedProject?.id === 'tiny-puertecillo' && (
+            <style dangerouslySetInnerHTML={{__html: `
+              .device-preview-wrapper {
+                --eco-bg-primary: #fff9ef !important;
+                --eco-bg-secondary: #f9f3ea !important;
+                --eco-bg-subtle: #f3ede4 !important;
+                --eco-accent-primary: #163428 !important;
+                --eco-accent-secondary: #964828 !important;
+                --eco-accent-gradient: linear-gradient(135deg, #163428 0%, #964828 100%) !important;
+                --eco-text-primary: #1d1b16 !important;
+                --eco-text-secondary: #5e5a51 !important;
+                --font-heading: 'Noto Serif', serif !important;
+                --font-body: 'Manrope', sans-serif !important;
+                background-color: #fff9ef !important;
+                color: #1d1b16 !important;
+              }
+              .device-preview-wrapper .hero-premium {
+                background-color: #fff9ef !important;
+                color: #1d1b16 !important;
+              }
+              .device-preview-wrapper .cta-luxury {
+                background: #163428 !important;
+                color: #fff9ef !important;
+                box-shadow: 0 4px 15px rgba(22, 52, 40, 0.3) !important;
+              }
+            `}} />
+          )}
           <div className='nav-actions' style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => setSelectedProject(null)} className='nav-btn' style={{ background: 'rgba(255,100,100,0.1)', color: '#ff6b6b' }}><Rocket size={16} /> SALIR</button>
 
-            <button
-              onClick={handleDeploy}
-              className='nav-btn'
-              style={{ background: isDeploying ? 'rgba(0, 212, 189, 0.2)' : 'rgba(255,255,255,0.05)', color: isDeploying ? '#00d4bd' : '#aaa', borderColor: isDeploying ? '#00d4bd' : 'rgba(255,255,255,0.1)' }}
-              disabled={isDeploying}
-            >
-              <CloudUpload size={16} className={isDeploying ? 'animate-bounce' : ''} />
-              {isDeploying ? 'ENVIANDO...' : 'PUBLISH'}
-            </button>
 
             <button
               onClick={handleSaveLocal}
@@ -1006,6 +1023,13 @@ export default function Home() {
       )}
 
       <div style={{ padding: showAdminUI ? '80px 0 0 0' : '0', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: previewMode !== 'desktop' ? '#111' : 'transparent' }}>
+        {/* Vínculo directo de estilos CSS del proyecto activo */}
+        {selectedProject?.path && (
+          <link 
+            rel="stylesheet" 
+            href={`/api/local-asset?path=${encodeURIComponent(selectedProject.path.replace(/\\/g, '/') + '/src/index.css')}`} 
+          />
+        )}
         <div 
           className={`device-preview-wrapper ${previewMode} ${designMode ? 'design-active' : ''}`}
           style={{
@@ -1112,84 +1136,179 @@ export default function Home() {
 
       {/* --- MENÚ DE CATEGORÍAS (Para Brochure / Portafolio) --- */}
       {content?.isBrochure && (
-        <div className="categories-header-brochure" style={{
-          width: '100%',
-          background: '#030303',
-          borderBottom: '1px solid rgba(255,255,255,0.02)',
-          position: 'sticky',
-          top: showAdminUI ? '75px' : '0',
-          zIndex: 100,
-          padding: '20px 50px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '20px',
-          flexWrap: 'wrap'
-        }}>
-          {/* Logo Ecomoving SpA */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img 
-              src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" 
-              alt="Ecomoving SpA" 
-              style={{ height: '28px', objectFit: 'contain' }} 
-            />
-          </div>
-
-          {/* Selector de Categorías (Pildoras Estilo Prototipo) */}
-          <div style={{ 
-            display: 'flex', 
-            background: 'rgba(255,255,255,0.01)', 
-            border: '1px solid rgba(255,255,255,0.04)', 
-            borderRadius: '40px', 
-            padding: '4px 6px',
+        <>
+          <header className="navbar" style={{
+            position: 'sticky',
+            top: showAdminUI ? '75px' : '0',
+            display: 'flex',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            gap: '4px'
+            padding: '16px 40px',
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderBottom: '1px solid var(--glass-border)',
+            zIndex: 100
           }}>
-            {['Todas', ...(content.categories || ["Escritura Regenerativa", "Movilidad Urbana RPET", "Tecnología Circular", "Innovación en Biomateriales"])].map((cat: string) => {
-              const isSelected = activeCategory === cat;
-              return (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  style={{
-                    padding: '8px 18px',
-                    background: isSelected ? 'rgba(0, 212, 189, 0.08)' : 'transparent',
-                    color: isSelected ? '#00d4bd' : 'rgba(255,255,255,0.6)',
-                    border: isSelected ? '1px solid rgba(0, 212, 189, 0.2)' : '1px solid transparent',
-                    borderRadius: '30px',
-                    fontSize: '11px',
-                    fontWeight: isSelected ? 800 : 500,
-                    textTransform: 'none',
-                    letterSpacing: '0.5px',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-                    fontFamily: 'var(--font-body)'
-                  }}
-                >
-                  {cat}
-                </button>
-              );
-            })}
-          </div>
+            {/* Left Side: Logo */}
+            <div className="logo" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              <img 
+                src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" 
+                alt="Ecomoving SpA" 
+                style={{ height: '36px', width: 'auto', display: 'block' }} 
+              />
+            </div>
 
-          {/* Control Solar / Tema (Lado Derecho) */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <button style={{
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: '50%',
-              width: '36px',
-              height: '36px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'rgba(255,255,255,0.5)',
-              cursor: 'pointer'
+            {/* Center: Filters at the same level as the logo */}
+            <nav className="filters-nav-inline" aria-label="Filtros de categoría" style={{ flexGrow: 1, display: 'flex', justifyContent: 'center', margin: '0 20px' }}>
+              <div className="filters" style={{ margin: 0, padding: '4px', borderRadius: '12px', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                {['Todas', ...(content.categories || ["Escritura Regenerativa", "Movilidad Urbana RPET", "Tecnología Circular", "Innovación en Biomateriales"])].map((cat: string, idx: number) => {
+                  const isSelected = activeCategory === cat;
+                  const isAll = cat === 'Todas';
+                  return (
+                    <div
+                      key={cat}
+                      className="category-btn-wrapper"
+                      style={{
+                        position: 'relative',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <button
+                        className={`filter-btn ${isSelected ? 'active' : ''}`}
+                        onClick={() => setActiveCategory(cat)}
+                        style={{
+                          padding: isAll ? '8px 16px' : (designMode ? '8px 34px 8px 16px' : '8px 16px'),
+                          fontSize: '0.85rem',
+                          fontWeight: 500,
+                          borderRadius: '8px',
+                          border: isSelected ? '1px solid #00d4bd' : '1px solid rgba(255,255,255,0.05)',
+                          background: isSelected ? 'rgba(0, 212, 189, 0.15)' : 'rgba(255,255,255,0.02)',
+                          color: isSelected ? '#00d4bd' : '#ccc',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        {cat}
+                      </button>
+                      
+                      {!isAll && designMode && (
+                        <div
+                          className="category-actions"
+                          style={{
+                            position: 'absolute',
+                            right: '6px',
+                            display: 'flex',
+                            gap: '2px',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const val = prompt('Renombrar categoría:', cat);
+                              if (val) handleRenameCategory(idx - 1, val);
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'rgba(255,255,255,0.4)',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: '4px',
+                            }}
+                            title="Renombrar"
+                          >
+                            <Edit2 size={10} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteCategory(cat);
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'rgba(255,100,100,0.6)',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: '4px',
+                            }}
+                            title="Eliminar"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {designMode && (
+                  <button
+                    onClick={handleAddCategory}
+                    className="filter-btn-add"
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '0.85rem',
+                      borderRadius: '8px',
+                      background: 'rgba(0, 212, 189, 0.1)',
+                      color: '#00d4bd',
+                      border: '1px dashed rgba(0, 212, 189, 0.3)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                      marginLeft: '4px'
+                    }}
+                    title="Añadir Categoría"
+                  >
+                    <Plus size={12} /> Añadir
+                  </button>
+                )}
+              </div>
+            </nav>
+
+            {/* Right Side: Theme Toggle */}
+            <div className="nav-actions" style={{ flexShrink: 0 }}>
+              <button className="theme-toggle" aria-label="Cambiar tema">
+                ☀️
+              </button>
+            </div>
+          </header>
+
+          {/* Centered Title block below the navbar menu bar */}
+          <div className="brochure-title-banner" style={{
+            textAlign: 'center',
+            padding: '40px 20px 20px 20px',
+            background: 'transparent'
+          }}>
+            <h1 style={{
+              fontSize: '2.4rem',
+              fontWeight: 900,
+              letterSpacing: '8px',
+              textTransform: 'uppercase',
+              color: 'var(--text-primary)',
+              background: 'linear-gradient(135deg, var(--text-primary) 30%, var(--accent))',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              margin: 0,
+              fontFamily: 'Outfit, sans-serif'
             }}>
-              ☀️
-            </button>
+              BROCHURE DIGITAL
+            </h1>
           </div>
-        </div>
+        </>
       )}
 
 
@@ -1274,14 +1393,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* --- FOOTER --- */}
-      <footer style={{ padding: '80px 0', textAlign: 'center', borderTop: '1px solid #111', background: '#000' }}>
-        <div style={{ marginBottom: '20px' }}>
-          <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img-footer" />
-        </div>
-        <div style={{ fontSize: '0.8rem', color: '#555', letterSpacing: '4px', marginBottom: '30px' }}>CHILE &bull; SUSTENTABILIDAD &bull; DISEÑO</div>
-        <div style={{ fontSize: '0.7rem', color: '#333' }}>© 2026 TODOS LOS DERECHOS RESERVADOS</div>
-      </footer>
+
       
       </div> {/* CLOSING WRAPPER DIV */}
       </div> {/* CLOSING OUTER PADDING DIV */}

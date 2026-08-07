@@ -37,6 +37,15 @@ const PROJECTS: Project[] = [
         status: 'draft',
         stitchProjectId: '4290871646268560517',
         clientName: 'Tiny Puertecillo SpA'
+    },
+    {
+        id: 'portafolio',
+        name: 'Portafolio',
+        repo: 'local-only',
+        path: 'c:/Users/Mario/Desktop/Portafolio',
+        lastExport: 'Recién vinculado',
+        type: 'client',
+        status: 'ready'
     }
 ];
 
@@ -56,14 +65,6 @@ export default function ProjectLauncher({ onSelect, onStitchPreview }: { onSelec
         const localCustom = localStorage.getItem('custom_projects');
         let customList = localCustom ? JSON.parse(localCustom) : [];
         
-        // Eliminar accesos previos de "Portafolio" para limpiar el menú
-        customList = customList.filter((cp: any) => 
-            cp.path !== 'c:/Users/Mario/Desktop/Portafolio' && 
-            cp.name !== 'Portafolio' &&
-            cp.id !== 'portafolio'
-        );
-        localStorage.setItem('custom_projects', JSON.stringify(customList));
-
         // Filtrar con los predeterminados
         customList = customList.filter((cp: any) => !PROJECTS.some(p => p.path === cp.path));
         setProjects([...PROJECTS, ...customList]);

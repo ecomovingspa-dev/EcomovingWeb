@@ -274,7 +274,7 @@ const BentoBlock = ({ block, previewMode }: {
               pointerEvents: 'auto',
               cursor: 'pointer',
               transition: 'all 0.3s cubic-bezier(0.19, 1, 0.22, 1)',
-              display: (block.blockTitle || block.blockParagraph || block.link) ? 'block' : 'none'
+              display: (block.buttonText || block.link || block.buttonSku) ? 'block' : 'none'
             }}
             onClick={(e) => {
               e.stopPropagation();
