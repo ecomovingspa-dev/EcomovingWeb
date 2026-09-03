@@ -18,7 +18,7 @@ export default function CatalogPage() {
             {/* Header del Catálogo */}
             <nav className="nav-premium">
                 <Link href="/" className="brand-logo">
-                    <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img" />
+                    <img src="/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img" />
                 </Link>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '25px' }}>
                     <Link href="/" className="nav-item" style={{ fontSize: '10px', fontWeight: '700', letterSpacing: '2px', textTransform: 'uppercase' }}>Volver a Inicio</Link>
@@ -71,7 +71,7 @@ export default function CatalogPage() {
 
             <footer className="footer-minimal">
                 <div>
-                    <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img-footer" />
+                    <img src="/Logo_horizontal.png" alt="Ecomoving Logo" className="logo-img-footer" />
                     <p style={{ marginTop: '20px', color: '#666', fontSize: '0.9rem' }}>
                         Catálogo Exclusivo para Empresas<br />
                         Ecomoving Premium

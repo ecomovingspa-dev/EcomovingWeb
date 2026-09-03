@@ -19,7 +19,8 @@ const resolveImageUrl = (img: string, projectPath?: string) => {
   }
   if (projectPath && img.startsWith('/')) {
     if (img.startsWith('/api/local-asset')) return img;
-    return `/api/local-asset?path=${encodeURIComponent(projectPath.replace(/\\/g, '/') + '/public' + img)}`;
+    const normalizedPath = projectPath.replace(/\\/g, '/');
+    return `/api/local-asset?path=${encodeURIComponent(normalizedPath + '/public' + img)}`;
   }
   return img;
 };
@@ -59,57 +60,74 @@ export default function BibliotecaIA({ onClose, projectId, projectPath }: Biblio
         if (marketingImages.length > 0) return;
         setLoadingMarketing(true);
         try {
-            const bucketName = isEcomoving ? 'imagenes-marketing' : 'hero';
-            const folderPath = isEcomoving ? 'marketing' : '';
-            let listResult: any[] = [];
-            
-            const { data, error } = await supabase.storage
-                .from(bucketName)
-                .list(folderPath, {
-                    limit: 100,
-                    sortBy: { column: 'created_at', order: 'desc' }
-                });
-
-            if (data) {
-                listResult = data;
-            }
-
-            // Fallback for Ecomoving to root bucket if 'marketing' folder is empty
-            if (isEcomoving && (!listResult || listResult.length === 0 || listResult.filter(item => item.name !== '.emptyFolderPlaceholder').length === 0)) {
-                const { data: rootData } = await supabase.storage
-                    .from('imagenes-marketing')
-                    .list('', {
+            if (projectPath) {
+                const localPath = `${projectPath}/public/marketing`;
+                const res = await fetch(`/api/local-folder?path=${encodeURIComponent(localPath.replace(/\\/g, '/'))}`);
+                const data = await res.json();
+                if (data.items) {
+                    const images: MediaImage[] = data.items
+                        .filter((item: any) => item.type === 'file' && /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name))
+                        .map((item: any) => ({
+                            name: item.name,
+                            url: `/marketing/${item.name}`,
+                            source: 'marketing' as const,
+                            category: 'General'
+                        }));
+                    setMarketingImages(images);
+                }
+            } else {
+                const bucketName = isEcomoving ? 'imagenes-marketing' : 'hero';
+                const folderPath = isEcomoving ? 'marketing' : '';
+                let listResult: any[] = [];
+                
+                const { data, error } = await supabase.storage
+                    .from(bucketName)
+                    .list(folderPath, {
                         limit: 100,
                         sortBy: { column: 'created_at', order: 'desc' }
                     });
-                if (rootData) {
-                    listResult = rootData;
+
+                if (data) {
+                    listResult = data;
                 }
-            }
 
-            if (listResult) {
-                const filteredData = listResult.filter(item =>
-                    item.name !== '.emptyFolderPlaceholder' &&
-                    item.name !== '.emptyKeepFile' &&
-                    (!isEcomoving || !['grilla', 'catalogo', 'hero', 'marketing'].includes(item.name))
-                );
+                // Fallback for Ecomoving to root bucket if 'marketing' folder is empty
+                if (isEcomoving && (!listResult || listResult.length === 0 || listResult.filter(item => item.name !== '.emptyFolderPlaceholder').length === 0)) {
+                    const { data: rootData } = await supabase.storage
+                        .from('imagenes-marketing')
+                        .list('', {
+                            limit: 100,
+                            sortBy: { column: 'created_at', order: 'desc' }
+                        });
+                    if (rootData) {
+                        listResult = rootData;
+                    }
+                }
 
-                const images: MediaImage[] = filteredData.map(item => {
-                    const prefix = isEcomoving && listResult !== data ? '' : (isEcomoving ? 'marketing/' : '');
-                    
-                    const { data: { publicUrl } } = supabase.storage
-                        .from(bucketName)
-                        .getPublicUrl(`${prefix}${item.name}`);
+                if (listResult) {
+                    const filteredData = listResult.filter(item =>
+                        item.name !== '.emptyFolderPlaceholder' &&
+                        item.name !== '.emptyKeepFile' &&
+                        (!isEcomoving || !['grilla', 'catalogo', 'hero', 'marketing'].includes(item.name))
+                    );
 
-                    return {
-                        name: item.name || 'Imagen Marketing',
-                        url: publicUrl,
-                        source: 'marketing' as const,
-                        category: 'General'
-                    };
-                }).filter(img => img.url && !img.url.includes('.emptyKeepFile'));
+                    const images: MediaImage[] = filteredData.map(item => {
+                        const prefix = isEcomoving && listResult !== data ? '' : (isEcomoving ? 'marketing/' : '');
+                        
+                        const { data: { publicUrl } } = supabase.storage
+                            .from(bucketName)
+                            .getPublicUrl(`${prefix}${item.name}`);
 
-                setMarketingImages(images);
+                        return {
+                            name: item.name || 'Imagen Marketing',
+                            url: publicUrl,
+                            source: 'marketing' as const,
+                            category: 'General'
+                        };
+                    }).filter(img => img.url && !img.url.includes('.emptyKeepFile'));
+
+                    setMarketingImages(images);
+                }
             }
         } catch (e) { console.error("Error fetching marketing storage:", e); }
         setLoadingMarketing(false);
@@ -126,11 +144,17 @@ export default function BibliotecaIA({ onClose, projectId, projectPath }: Biblio
         if (catalogImages.length > 0) return;
         setLoadingCatalog(true);
         try {
-            // Carga desde 'productos' (Catálogo oficial publicados y unificados)
-            const { data: prodData } = await supabase
-                .from('productos')
-                .select('nombre, imagen_principal, imagenes_galeria, categoria, is_premium')
-                .limit(2000);
+            let prodData = [];
+            if (projectPath) {
+                const res = await fetch('/productos_db.json');
+                prodData = await res.json();
+            } else {
+                const { data } = await supabase
+                    .from('productos')
+                    .select('nombre, imagen_principal, imagenes_galeria, categoria, is_premium')
+                    .limit(2000);
+                prodData = data || [];
+            }
 
             if (prodData && prodData.length > 0) {
                 const catalogList: MediaImage[] = [];
@@ -172,38 +196,55 @@ export default function BibliotecaIA({ onClose, projectId, projectPath }: Biblio
         if (grillaImages.length > 0) return;
         setLoadingGrilla(true);
         try {
-            const bucketName = isEcomoving ? 'imagenes-marketing' : 'grilla';
-            const folderPath = isEcomoving ? 'grilla' : '';
-            
-            const { data, error } = await supabase.storage
-                .from(bucketName)
-                .list(folderPath, {
-                    limit: 100,
-                    sortBy: { column: 'created_at', order: 'desc' }
-                });
+            if (projectPath) {
+                const localPath = `${projectPath}/public/grilla`;
+                const res = await fetch(`/api/local-folder?path=${encodeURIComponent(localPath.replace(/\\/g, '/'))}`);
+                const data = await res.json();
+                if (data.items) {
+                    const images: MediaImage[] = data.items
+                        .filter((item: any) => item.type === 'file' && /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name))
+                        .map((item: any) => ({
+                            name: item.name,
+                            url: `/grilla/${item.name}`,
+                            source: 'grilla' as const,
+                            category: 'General'
+                        }));
+                    setGrillaImages(images);
+                }
+            } else {
+                const bucketName = isEcomoving ? 'imagenes-marketing' : 'grilla';
+                const folderPath = isEcomoving ? 'grilla' : '';
+                
+                const { data, error } = await supabase.storage
+                    .from(bucketName)
+                    .list(folderPath, {
+                        limit: 100,
+                        sortBy: { column: 'created_at', order: 'desc' }
+                    });
 
-            if (data) {
-                const filteredData = data.filter(item =>
-                    item.name !== '.emptyFolderPlaceholder' &&
-                    item.name !== '.emptyKeepFile' &&
-                    /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name)
-                );
+                if (data) {
+                    const filteredData = data.filter(item =>
+                        item.name !== '.emptyFolderPlaceholder' &&
+                        item.name !== '.emptyKeepFile' &&
+                        /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name)
+                    );
 
-                const images: MediaImage[] = filteredData.map(item => {
-                    const path = folderPath ? `${folderPath}/${item.name}` : item.name;
-                    const { data: { publicUrl } } = supabase.storage
-                        .from(bucketName)
-                        .getPublicUrl(path);
+                    const images: MediaImage[] = filteredData.map(item => {
+                        const path = folderPath ? `${folderPath}/${item.name}` : item.name;
+                        const { data: { publicUrl } } = supabase.storage
+                            .from(bucketName)
+                            .getPublicUrl(path);
 
-                    return {
-                        name: item.name || 'Imagen Grilla',
-                        url: publicUrl,
-                        source: 'grilla' as const,
-                        category: 'General'
-                    };
-                });
+                        return {
+                            name: item.name || 'Imagen Grilla',
+                            url: publicUrl,
+                            source: 'grilla' as const,
+                            category: 'General'
+                        };
+                    });
 
-                setGrillaImages(images);
+                    setGrillaImages(images);
+                }
             }
         } catch (e) { console.error("Error fetching grilla storage:", e); }
         setLoadingGrilla(false);

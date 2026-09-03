@@ -51,7 +51,7 @@ export const getMarketingHTMLTemplate = (subject: string, p1: string, p2: string
             <!-- Logo Section -->
             <tr>
                 <td align="center">
-                    <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving" width="250" style="width: 250px; display: block;" />
+                    <img src="/Logo_horizontal.png" alt="Ecomoving" width="250" style="width: 250px; display: block;" />
                 </td>
             </tr>
             

@@ -1,22 +1,42 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+// Cliente Supabase Mockeado para independización total de base de datos externa
+// Elimina todas las credenciales residuales y previene fallos de variables de entorno
 
-const defaultUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const defaultKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-const defaultClient = createClient(defaultUrl, defaultKey);
-
-// Tiny Puertecillo Supabase credentials
-const tinyUrl = 'https://xqybckftzuupkmbwocrj.supabase.co';
-const tinyKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhxeWJja2Z0enV1cGttYndvY3JqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2Mjg5MjYsImV4cCI6MjA5OTIwNDkyNn0.WnAdZ7cC0Q__a4g-x3rRdEKZLkjdNOR35HdqReKIrx0';
-
-const tinyClient = createClient(tinyUrl, tinyKey);
-
-export const getSupabaseClient = (projectId?: string): SupabaseClient => {
-    if (projectId === 'tiny-puertecillo') {
-        return tinyClient;
-    }
-    return defaultClient;
+export const getSupabaseClient = (projectId?: string): any => {
+    const mockClient = {
+        from: () => ({
+            select: () => ({
+                eq: () => ({
+                    order: () => Promise.resolve({ data: [], error: null }),
+                    limit: () => Promise.resolve({ data: [], error: null })
+                }),
+                order: () => Promise.resolve({ data: [], error: null }),
+                limit: () => Promise.resolve({ data: [], error: null })
+            }),
+            insert: () => Promise.resolve({ data: [], error: null }),
+            update: () => ({
+                eq: () => Promise.resolve({ data: [], error: null })
+            }),
+            delete: () => ({
+                eq: () => Promise.resolve({ data: [], error: null })
+            })
+        }),
+        storage: {
+            from: () => ({
+                list: () => Promise.resolve({ data: [], error: null }),
+                getPublicUrl: () => ({ data: { publicUrl: '' } }),
+                upload: () => Promise.resolve({ data: {}, error: null }),
+                remove: () => Promise.resolve({ data: {}, error: null })
+            })
+        },
+        channel: () => ({
+            on: () => ({
+                subscribe: () => {}
+            })
+        }),
+        removeChannel: () => {}
+    };
+    return mockClient;
 };
 
-// Exportar cliente por defecto para compatibilidad hacia atrás
-export const supabase = defaultClient;
+// Cliente por defecto mockeado
+export const supabase = getSupabaseClient();

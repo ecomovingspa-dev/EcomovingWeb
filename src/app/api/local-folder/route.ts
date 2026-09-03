@@ -2,14 +2,19 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+
 // Endpoint para el Explorador Local de Ecomoving
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const folderPath = searchParams.get('path') || 'C:\\Users\\Mario\\Desktop';
     const search = searchParams.get('search'); // Nuevo parámetro para búsqueda por SKU
 
-    // Validación de seguridad básica para el entorno local
-    if (!folderPath.startsWith('C:\\Users\\Mario')) {
+    // Validación de seguridad básica para el entorno local (normalizada)
+    const normalizedPath = folderPath.replace(/\\/g, '/').toLowerCase();
+    const cleanPrefix = 'c:/users/mario'.toLowerCase();
+
+    if (!normalizedPath.startsWith(cleanPrefix)) {
         return NextResponse.json({ error: 'Acceso restringido a carpetas de usuario' }, { status: 403 });
     }
 

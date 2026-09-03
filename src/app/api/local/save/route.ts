@@ -11,7 +11,13 @@ export async function POST(request: Request) {
         }
 
         // Aseguramos que la ruta sea absoluta y válida
-        const targetPath = path.join(projectPath, fileName);
+        let targetPath = path.join(projectPath, fileName);
+        if (fileName === 'web_content_sync.json' || fileName === 'productos_db.json') {
+            const publicPath = path.join(projectPath, 'public', fileName);
+            if (fs.existsSync(path.join(projectPath, 'public')) || fs.existsSync(publicPath)) {
+                targetPath = publicPath;
+            }
+        }
         
         // Verificamos si la carpeta existe, si no, la creamos recursivamente
         if (!fs.existsSync(projectPath)) {

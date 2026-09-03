@@ -16,8 +16,9 @@ export async function POST(req: Request) {
         const buffer = Buffer.from(await file.arrayBuffer());
         const filename = file.name;
         
-        // Guardar en public/tab (grilla, marketing, catalog, premium)
-        const targetDir = path.join(projectPath, 'public', tab);
+        // Guardar de forma estandarizada en [projectPath]/public/[folder]
+        const targetFolder = tab === 'catalog' ? 'productos' : tab;
+        const targetDir = path.join(projectPath, 'public', targetFolder);
 
         // Crear directorio si no existe
         if (!fs.existsSync(targetDir)) {
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
 
         return NextResponse.json({
             success: true,
-            url: `/${tab}/${filename}`,
+            url: `/${targetFolder}/${filename}`,
             path: targetPath
         });
     } catch (e: any) {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSupabaseClient } from '@/lib/supabase';
 
 export interface HeroContent {
     title1: string;
@@ -152,13 +151,12 @@ export function useWebContent(projectPath?: string, projectId?: string) {
     const [content, setContent] = useState<WebContent>(defaultContent);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const supabaseClient = getSupabaseClient(projectId);
 
     const fetchContent = useCallback(async () => {
         try {
             setLoading(true);
 
-            // PRIORIDAD 1: LECTURA LOCAL SI HAY RUTA DE PROYECTO (Studio Mode)
+            // LECTURA LOCAL SI HAY RUTA DE PROYECTO (Studio Mode)
             if (projectPath) {
                 const res = await fetch(`/api/local/read?t=${Date.now()}`, {
                     method: 'POST',
@@ -185,7 +183,7 @@ export function useWebContent(projectPath?: string, projectId?: string) {
                 return;
             }
 
-            // PRIORIDAD 1.5: INTENTAR LEER ARCHIVO ESTÁTICO LOCAL EN LA RAÍZ DEL SITIO (Modo Producción Estática)
+            // MODO PRODUCCIÓN ESTÁTICA EN LA RAÍZ DEL SITIO
             try {
                 const res = await fetch(`/web_content_sync.json?t=${Date.now()}`, {
                     headers: {
@@ -205,55 +203,10 @@ export function useWebContent(projectPath?: string, projectId?: string) {
                     return;
                 }
             } catch (e) {
-                console.log("No se pudo cargar el archivo local web_content_sync.json, usando Supabase.");
+                console.log("No se pudo cargar el archivo local web_content_sync.json");
             }
 
-            // PRIORIDAD 2: SUPABASE (Modo Producción o Fallback)
-            const { data, error: fetchError } = await supabaseClient
-                .from('web_contenido')
-                .select('section, content');
-
-            if (fetchError) {
-                console.warn('Supabase fetch error (using defaults):', fetchError);
-                setContent(defaultContent);
-                return;
-            }
-
-            if (data && data.length > 0) {
-                const newContent: WebContent = { ...defaultContent };
-                const extraSections: Record<string, any> = {};
-
-                data.forEach((row) => {
-                    const sectionName = row.section;
-                    if (sectionName === 'hero') {
-                        newContent.hero = { ...newContent.hero, ...(row.content as any) };
-                    } else if (sectionName === 'sections') {
-                        const rawData = row.content;
-                        newContent.sections = Array.isArray(rawData) ? rawData :
-                            (typeof rawData === 'object' ? Object.values(rawData) : []);
-                    } else {
-                        const key = sectionName.toLowerCase();
-                        extraSections[key] = row.content;
-                        newContent[key] = row.content;
-                    }
-                });
-
-                if (newContent.sections.length > 0) {
-                    newContent.sections = newContent.sections.map(s => {
-                        const titleLower = (s.title1 || (s as any).title || '').toLowerCase();
-                        const idLower = (s.id || '').toLowerCase();
-                        const foundKey = Object.keys(extraSections).find(key =>
-                            titleLower.includes(key) || idLower.includes(key)
-                        );
-                        const extra = foundKey ? extraSections[foundKey] : null;
-                        if (extra && extra.gallery && Array.isArray(extra.gallery)) {
-                            return { ...s, gallery: extra.gallery };
-                        }
-                        return s;
-                    });
-                }
-                setContent(newContent);
-            }
+            setContent(defaultContent);
         } catch (err) {
             console.error('Error fetching web content:', err);
             setError(String(err));
@@ -268,24 +221,10 @@ export function useWebContent(projectPath?: string, projectId?: string) {
             const currentSection = content[section];
             let merged = Array.isArray(currentSection) ? newContentData : { ...currentSection, ...newContentData };
 
-            // 1. Update Supabase
-            try {
-                const { error: updateError } = await supabaseClient
-                    .from('web_contenido')
-                    .upsert({
-                        section,
-                        content: merged,
-                        updated_by: 'useWebContent'
-                    }, { onConflict: 'section' });
-                if (updateError) throw updateError;
-            } catch (err) {
-                console.warn("[useWebContent] Supabase sync error (using local state):", err);
-            }
-
             const updatedContent = { ...content, [section]: merged };
             setContent(updatedContent);
 
-            // 2. If projectPath is active, save to local sync file
+            // Guardar en el archivo de sincronización local
             if (projectPath) {
                 try {
                     await fetch('/api/local/save', {
@@ -310,13 +249,7 @@ export function useWebContent(projectPath?: string, projectId?: string) {
 
     useEffect(() => {
         fetchContent();
-        if (!projectPath) {
-            const channelId = `web-content-sync-${Math.random().toString(36).substring(7)}`;
-            const channel = supabaseClient.channel(channelId).on('postgres_changes' as any, { event: '*', schema: 'public', table: 'web_contenido' }, () => fetchContent());
-            channel.subscribe();
-            return () => { supabaseClient.removeChannel(channel); };
-        }
-    }, [fetchContent, projectPath, supabaseClient]);
+    }, [fetchContent]);
 
     return { content, loading, error, refetch: fetchContent, updateSection };
 }

@@ -390,7 +390,7 @@ export default function Home() {
             }}
           >
             <img 
-              src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" 
+              src="/Logo_horizontal.png" 
               alt="Ecomoving Logo" 
               style={{ maxHeight: '35px', width: 'auto', filter: 'brightness(1.5)' }} 
             />
@@ -553,7 +553,7 @@ export default function Home() {
       <footer style={{ padding: '80px 0', textAlign: 'center', borderTop: '1px solid #111', background: '#000', position: 'relative', zIndex: 10 }}>
         <div style={{ marginBottom: '30px' }}>
           <img 
-            src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" 
+            src="/Logo_horizontal.png" 
             alt="Ecomoving Logo" 
             style={{ maxHeight: '60px', width: 'auto', filter: 'brightness(1.2)' }} 
           />

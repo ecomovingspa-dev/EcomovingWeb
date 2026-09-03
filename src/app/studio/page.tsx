@@ -39,7 +39,8 @@ const resolveImageUrl = (img: string, projectPath?: string) => {
   }
   if (projectPath && img.startsWith('/')) {
     if (img.startsWith('/api/local-asset')) return img;
-    return `/api/local-asset?path=${encodeURIComponent(projectPath.replace(/\\/g, '/') + '/public' + img)}`;
+    const normalizedPath = projectPath.replace(/\\/g, '/');
+    return `/api/local-asset?path=${encodeURIComponent(normalizedPath + '/public' + img)}`;
   }
   return img;
 };
@@ -886,7 +887,7 @@ export default function Home() {
     }
   }, [heroImages.length]);
 
-  if (contentLoading) return <div className='loading-screen'>ECOMOVING SPA</div>;
+  if (contentLoading && selectedProject) return <div className='loading-screen'>ECOMOVING SPA</div>;
 
  
   if (!selectedProject && !isProduction) {
@@ -931,7 +932,7 @@ export default function Home() {
             <img 
               src={selectedProject?.id === 'tiny-puertecillo'
                 ? "https://xqybckftzuupkmbwocrj.supabase.co/storage/v1/object/public/logo/logo_negro_clean.png"
-                : "https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png"
+                : "/Logo_horizontal.png"
               } 
               alt="Logo" 
               className="logo-img" 
@@ -1153,7 +1154,7 @@ export default function Home() {
             {/* Left Side: Logo */}
             <div className="logo" style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
               <img 
-                src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" 
+                src="/Logo_horizontal.png" 
                 alt="Ecomoving SpA" 
                 style={{ height: '36px', width: 'auto', display: 'block' }} 
               />

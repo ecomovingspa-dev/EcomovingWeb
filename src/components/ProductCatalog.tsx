@@ -43,17 +43,35 @@ export default function ProductCatalog({
 
     const fetchApprovedProducts = async () => {
         try {
-            // Carga desde la tabla unificada 'productos' (Solo los aprobados para el público)
-            const { data, error } = await supabase
-                .from('productos')
-                .select('*')
-                .eq('status', 'approved')
-                .order('created_at', { ascending: false });
+            let rawData: any[] = [];
+            try {
+                // Intentamos cargar el archivo estático local primero
+                const res = await fetch(`/productos_db.json?t=${Date.now()}`);
+                if (res.ok) {
+                    const localData = await res.json();
+                    // Filtrar aprobados si viene del dump completo de productos_db
+                    rawData = Array.isArray(localData) 
+                        ? localData.filter((item: any) => item.status === 'approved') 
+                        : [];
+                    console.log('✅ Catálogo Vivo cargado desde productos_db.json local:', rawData.length);
+                } else {
+                    throw new Error('Static file productos_db.json not found');
+                }
+            } catch (e) {
+                console.log('No se pudo cargar productos_db.json localmente, intentando Supabase...');
+                const { data, error } = await supabase
+                    .from('productos')
+                    .select('*')
+                    .eq('status', 'approved')
+                    .order('created_at', { ascending: false });
 
-            if (error) throw error;
+                if (error) throw error;
+                rawData = data || [];
+                console.log('✅ Catálogo Vivo cargado desde Supabase:', rawData.length);
+            }
 
-            if (data && data.length > 0) {
-                const formattedProducts: Product[] = data.map((item: any) => ({
+            if (rawData && rawData.length > 0) {
+                const formattedProducts: Product[] = rawData.map((item: any) => ({
                     id: item.id,
                     name: item.nombre,
                     description: item.descripcion || '',
@@ -65,7 +83,6 @@ export default function ProductCatalog({
                     isPremium: item.is_premium || false
                 }));
 
-                console.log('✅ Catálogo Vivo cargado desde Supabase:', formattedProducts.length);
                 setProducts(formattedProducts);
 
                 // Actualizar categorías dinámicamente desde los productos
@@ -78,7 +95,7 @@ export default function ProductCatalog({
                 setSpecialCategories(Array.from(existingCats).sort());
             }
         } catch (error) {
-            console.error('Error fetching products from unified table:', error);
+            console.error('Error fetching products:', error);
             setProducts([]);
         }
     };

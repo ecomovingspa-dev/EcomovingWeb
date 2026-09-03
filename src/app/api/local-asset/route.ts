@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 
+export const dynamic = 'force-dynamic';
+
 // Endpoint para servir archivos locales al navegador
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);

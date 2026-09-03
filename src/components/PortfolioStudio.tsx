@@ -82,7 +82,7 @@ export default function PortfolioStudio({ projectPath, initialData, onSave, onCl
                     <div style={{ position: 'absolute', inset: 0, background: '#000', color: 'white' }}>
                         <div style={{ padding: '80px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                <img src="https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/logo_ecomoving/Logo_horizontal.png" alt="Ecomoving" style={{ height: '40px', filter: 'brightness(1.5)' }} />
+                                <img src="/Logo_horizontal.png" alt="Ecomoving" style={{ height: '40px', filter: 'brightness(1.5)' }} />
                                 <div style={{ fontSize: '10px', letterSpacing: '4px', opacity: 0.5 }}>MEMORIA_TÉCNICA_v1.0</div>
                             </div>
                             

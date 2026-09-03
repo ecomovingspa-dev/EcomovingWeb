@@ -16,7 +16,8 @@ const resolveImageUrl = (img: string, projectPath?: string) => {
   }
   if (projectPath && img.startsWith('/')) {
     if (img.startsWith('/api/local-asset')) return img;
-    return `/api/local-asset?path=${encodeURIComponent(projectPath.replace(/\\/g, '/') + '/public' + img)}`;
+    const normalizedPath = projectPath.replace(/\\/g, '/');
+    return `/api/local-asset?path=${encodeURIComponent(normalizedPath + '/public' + img)}`;
   }
   return img;
 };
@@ -120,37 +121,42 @@ export default function BlockInspector({
         if (!isEcomoving) {
             setPickerLoading(true);
             try {
-                // List files in the 'grilla' bucket
-                const { data } = await supabase.storage.from('grilla').list('', { limit: 100 });
-                let results: { url: string; name: string }[] = [];
-                if (data) {
-                    results = data
-                        .filter(f => f.name !== '.emptyKeepFile' && f.name !== '.emptyFolderPlaceholder')
-                        .map(f => {
-                            const { data: { publicUrl } } = supabase.storage.from('grilla').getPublicUrl(f.name);
-                            return { url: publicUrl, name: f.name };
-                        });
-                }
-                
-                // Fallback to 'hero' bucket if 'grilla' is empty
-                if (results.length === 0) {
-                    const { data: heroData } = await supabase.storage.from('hero').list('', { limit: 100 });
-                    if (heroData) {
-                        results = heroData
+                if (projectPath) {
+                    const localPath = `${projectPath}/public/grilla`;
+                    const res = await fetch(`/api/local-folder?path=${encodeURIComponent(localPath.replace(/\\/g, '/'))}`);
+                    const data = await res.json();
+                    let results: { url: string; name: string }[] = [];
+                    if (data.items) {
+                        results = data.items
+                            .filter((item: any) => item.type === 'file' && /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name))
+                            .map((item: any) => ({
+                                url: `/grilla/${item.name}`,
+                                name: item.name
+                            }));
+                    }
+                    if (query.trim()) {
+                        const q = query.toLowerCase().trim();
+                        results = results.filter(img => img.name.toLowerCase().includes(q));
+                    }
+                    setPickerImages(results);
+                } else {
+                    // Fallback to supabase grilla bucket if no projectPath
+                    const { data } = await supabase.storage.from('grilla').list('', { limit: 100 });
+                    let results: { url: string; name: string }[] = [];
+                    if (data) {
+                        results = data
                             .filter(f => f.name !== '.emptyKeepFile' && f.name !== '.emptyFolderPlaceholder')
                             .map(f => {
-                                const { data: { publicUrl } } = supabase.storage.from('hero').getPublicUrl(f.name);
+                                const { data: { publicUrl } } = supabase.storage.from('grilla').getPublicUrl(f.name);
                                 return { url: publicUrl, name: f.name };
                             });
                     }
+                    if (query.trim()) {
+                        const q = query.toLowerCase().trim();
+                        results = results.filter(img => img.name.toLowerCase().includes(q));
+                    }
+                    setPickerImages(results);
                 }
-
-                if (query.trim()) {
-                    const q = query.toLowerCase().trim();
-                    results = results.filter(img => img.name.toLowerCase().includes(q));
-                }
-
-                setPickerImages(results);
             } catch (e) {
                 console.error('[BIBLIOTECA LOCAL SUPABASE]', e);
                 setPickerImages([]);
@@ -219,6 +225,19 @@ export default function BlockInspector({
                             const { data: { publicUrl } } = supabase.storage.from('imagenes-marketing').getPublicUrl(`grilla/${f.name}`);
                             return { url: publicUrl, name: f.name };
                         });
+                    setGrillaImages(results);
+                }
+            } else if (projectPath) {
+                const localPath = `${projectPath}/public/grilla`;
+                const res = await fetch(`/api/local-folder?path=${encodeURIComponent(localPath.replace(/\\/g, '/'))}`);
+                const data = await res.json();
+                if (data.items) {
+                    const results = data.items
+                        .filter((item: any) => item.type === 'file' && /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(item.name))
+                        .map((item: any) => ({
+                            url: `/grilla/${item.name}`,
+                            name: item.name
+                        }));
                     setGrillaImages(results);
                 }
             } else {

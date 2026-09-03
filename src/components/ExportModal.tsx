@@ -24,21 +24,40 @@ export default function ExportModal({ isOpen, onClose, project }: ExportModalPro
     const handleExport = async () => {
         setStatus('preparing');
         setLog([]);
-        addLog('Iniciando preparación de archivos...');
+        addLog('🚀 Iniciando proceso de exportación real...');
+        addLog('📦 Compilando sitio Next.js, aislando paneles de administración...');
 
-        // Simulación de proceso (Aquí es donde se llamaría al script de Node real)
-        await new Promise(r => setTimeout(r, 1000));
-        addLog('Filtrando componentes administrativos (Sidebar, Hub, etc.)...');
+        try {
+            const res = await fetch('/api/local/publish', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectPath: project.path })
+            });
+            const data = await res.json();
 
-        await new Promise(r => setTimeout(r, 1200));
-        addLog('Limpiando page.tsx de botones de edición...');
+            if (res.ok && data.success) {
+                addLog('✅ Compilación estática completada.');
+                addLog('📂 Archivos estáticos transferidos con éxito a ' + project.path);
+                addLog('⚡ Sincronizando con repositorio de GitHub...');
+                
+                if (data.log) {
+                    const lines = data.log.split('\n').filter((l: string) => l.trim());
+                    lines.forEach((l: string) => addLog(l));
+                }
 
-        await new Promise(r => setTimeout(r, 800));
-        addLog('Sincronizando globals.css y activos visuales...');
-
-        await new Promise(r => setTimeout(r, 1000));
-        addLog('Archivos preparados en la carpeta de destino.');
-        setStatus('ready');
+                addLog('🎉 ¡Sincronización y despliegue completado con ÉXITO!');
+                setStatus('done');
+            } else {
+                addLog('❌ Error durante la exportación: ' + (data.error || 'Fallo desconocido'));
+                if (data.details) {
+                    addLog(data.details);
+                }
+                setStatus('idle');
+            }
+        } catch (e: any) {
+            addLog('❌ Error de conexión: ' + e.message);
+            setStatus('idle');
+        }
     };
 
     const handlePush = async () => {

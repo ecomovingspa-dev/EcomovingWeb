@@ -1,62 +1,31 @@
-# Publish Script for Ecomoving
-$ErrorActionPreference = "Continue" # Don't stop on minor revert errors
-$env:NODE_TLS_REJECT_UNAUTHORIZED="0" # Bypass SSL issues downloading Google Fonts during build
+# Publish Script for Ecomoving (Standardized Codebase Sync & Push)
+$ErrorActionPreference = "Stop"
 
 $root = "C:\Users\Mario\Desktop\LaFabrica"
 $site = "C:\Users\Mario\Desktop\ecomoving-site"
-$localEdit = "C:\Users\Mario\Desktop\EcomovingWeb"
-$out = "$root\out"
 
-Write-Host "--- Iniciando Proceso de Publicación (Auditado) ---"
-
-# 0. Limpiar cache
-Write-Host "Limpiando archivos temporales..."
-if (Test-Path "$root\.next") { Remove-Item -Recurse -Force "$root\.next" }
-if (Test-Path "$root\out") { Remove-Item -Recurse -Force "$root\out" }
-
-# 1. Preparar Entorno de Build (Aislamiento de Aplicación Pública)
-Write-Host "Aislando componentes administrativos y rutas dinámicas..."
-$apiMoved = $false
-$studioMoved = $false
-$robotsMoved = $false
-$sitemapMoved = $false
-
-if (Test-Path "$root\src\app\api") { Move-Item "$root\src\app\api" "$root\src\api_temp_hide" -Force; $apiMoved = $true }
-if (Test-Path "$root\src\app\studio") { Move-Item "$root\src\app\studio" "$root\src\studio_temp_hide" -Force; $studioMoved = $true }
-if (Test-Path "$root\src\app\robots.ts") { Move-Item "$root\src\app\robots.ts" "$root\src\robots_temp_hide.ts" -Force; $robotsMoved = $true }
-if (Test-Path "$root\src\app\sitemap.ts") { Move-Item "$root\src\app\sitemap.ts" "$root\src\sitemap_temp_hide.ts" -Force; $sitemapMoved = $true }
+Write-Host "--- Iniciando Proceso de Publicación ---"
 
 try {
-    # 2. Construcción Estática
-    Write-Host "Ejecutando Build Estático..."
-    # 1.5 Sincronizar archivo de contenido local
-    Write-Host "Sincronizando web_content_sync.json para la compilación..."
-    if (Test-Path "$localEdit\web_content_sync.json") {
-        Copy-Item "$localEdit\web_content_sync.json" "$root\public\web_content_sync.json" -Force
-    }
+    # 1. Copiar archivos de configuración base
+    Write-Host "Sincronizando archivos de configuración..."
+    Copy-Item -Path "$root\package.json", "$root\next.config.ts", "$root\tsconfig.json", "$root\tailwind.config.ts", "$root\postcss.config.js", "$root\eslint.config.mjs", "$root\next-env.d.ts", "$root\types.ts" -Destination $site -Force
 
-    Set-Location $root
-    npm run build
+    # 2. Sincronizar directorio src (Excluyendo Studio y APIs administrativas)
+    Write-Host "Sincronizando código fuente público..."
+    # Limpiar src antiguo para asegurar paridad
+    if (Test-Path "$site\src") { Remove-Item -Recurse -Force "$site\src" }
+    mkdir "$site\src" -Force | Out-Null
+    Copy-Item -Path "$root\src\*" -Destination "$site\src" -Recurse -Force
 
-    # 3. Transferencia a Producción
-    Write-Host "Sincronizando archivos con ecomoving-site..."
-    if (Test-Path $out) {
-        # Limpiar sitio antes de copiar para asegurar paridad absoluta (conservando git y el json si estuviera)
-        Get-ChildItem $site -Exclude ".git","web_content_sync.json" | Remove-Item -Recurse -Force
-        xcopy /e /i /y "$out\*" "$site\"
-        # Copiar web_content_sync.json también a la raíz de ecomoving-site para que se suba a GitHub
-        if (Test-Path "$localEdit\web_content_sync.json") {
-            Copy-Item "$localEdit\web_content_sync.json" "$site\web_content_sync.json" -Force
-        }
-    } else {
-        throw "Error: No se encontró la carpeta de salida 'out'."
-    }
+    # Eliminar rutas de administración del sitio cliente
+    Remove-Item -Path "$site\src\app\studio", "$site\src\app\api" -Recurse -Force -ErrorAction SilentlyContinue
 
-    # 4. Despliegue Git
+    # 3. Despliegue Git directo a GitHub
     Write-Host "Enviando cambios a GitHub..."
     Set-Location $site
     git add .
-    git commit -m "publish: grid parity and clean static export"
+    git commit -m "publish: standardized codebase sync and content update" --allow-empty
     git push origin main
 
     Write-Host "--- Publicación Completada con ÉXITO ---"
@@ -65,11 +34,5 @@ catch {
     Write-Error "Error durante la publicación: $_"
 }
 finally {
-    # 5. Restauración del Entorno
-    Write-Host "Restaurando entorno de desarrollo..."
-    if ($apiMoved) { Move-Item "$root\src\api_temp_hide" "$root\src\app\api" -Force }
-    if ($studioMoved) { Move-Item "$root\src\studio_temp_hide" "$root\src\app\studio" -Force }
-    if ($robotsMoved) { Move-Item "$root\src\robots_temp_hide.ts" "$root\src\app\robots.ts" -Force }
-    if ($sitemapMoved) { Move-Item "$root\src\sitemap_temp_hide.ts" "$root\src\app\sitemap.ts" -Force }
     Set-Location $root
 }

@@ -22,7 +22,7 @@ const PROJECTS: Project[] = [
         id: 'ecomoving-public',
         name: 'Ecomoving | Sitio Público',
         repo: 'ecomovingspa-dev/ecomoving-site',
-        path: 'c:/Users/Mario/Desktop/EcomovingWeb',
+        path: 'c:/Users/Mario/Desktop/ecomoving-site',
         lastExport: 'Hace 20 minutos',
         type: 'public',
         status: 'online'
@@ -183,7 +183,7 @@ export default function ProjectLauncher({ onSelect, onStitchPreview }: { onSelec
                         hero: {
                             title1: "NUEVA PÁGINA WEB",
                             paragraph1: "DISEÑADA CON EL ECOMOVING ENGINE V2.0",
-                            background_image: "https://xgdmyjzyejjmwdqkufhp.supabase.co/storage/v1/object/public/imagenes-marketing/MKT-1775442852177.jpg",
+                            background_image: "/MKT-1775442852177.jpg",
                             cta_text: "EXPLORAR",
                             cta_link: "#"
                         },

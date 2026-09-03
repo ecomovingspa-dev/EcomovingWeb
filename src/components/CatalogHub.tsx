@@ -46,6 +46,145 @@ export default function CatalogHub({
 }: CatalogHubProps) {
     const supabase = getSupabaseClient(projectId);
     const isEcomoving = !projectId || projectId === 'ecomoving-public';
+
+    const uploadToStorage = async (blob: Blob, folder: string, filename: string, contentType: string): Promise<string> => {
+        if (projectPath) {
+            let tab = 'marketing';
+            if (folder.includes('grilla')) tab = 'grilla';
+            else if (folder.includes('catalogo') || folder.includes('productos') || folder.includes('catalog')) tab = 'catalog';
+            else if (folder.includes('hero')) tab = 'hero';
+
+            const formData = new FormData();
+            formData.append('file', new File([blob], filename, { type: contentType }));
+            formData.append('projectPath', projectPath);
+            formData.append('tab', tab);
+
+            const res = await fetch('/api/local/upload', {
+                method: 'POST',
+                body: formData
+            });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed local upload');
+            }
+            const data = await res.json();
+            return data.url;
+        } else {
+            const bucketName = (!isEcomoving && folder.includes('grilla')) ? 'grilla' : 
+                               (!isEcomoving && folder.includes('hero')) ? 'hero' : 'imagenes-marketing';
+            
+            const filePath = folder ? `${folder}/${filename}` : filename;
+
+            const { error } = await supabase.storage
+                .from(bucketName)
+                .upload(filePath, blob, { contentType });
+
+            if (error) throw error;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from(bucketName)
+                .getPublicUrl(filePath);
+            return publicUrl;
+        }
+    };
+
+    const readProductsDB = async (): Promise<any[]> => {
+        if (projectPath) {
+            const res = await fetch(`/api/local/read?t=${Date.now()}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectPath, fileName: 'productos_db.json' })
+            });
+            const data = await res.json();
+            return data.success && Array.isArray(data.content) ? data.content : [];
+        } else {
+            const { data, error } = await supabase
+                .from('productos')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return data || [];
+        }
+    };
+
+    const saveProductToDB = async (productData: any, productId: string) => {
+        if (projectPath) {
+            const currentProducts = await readProductsDB();
+            let updatedProducts = [...currentProducts];
+            
+            if (productId.startsWith('new-')) {
+                const newId = crypto.randomUUID();
+                const insertData = {
+                    ...productData,
+                    id: newId,
+                    created_at: new Date().toISOString()
+                };
+                updatedProducts.push(insertData);
+            } else {
+                updatedProducts = updatedProducts.map(p => p.id === productId ? { ...p, ...productData } : p);
+            }
+
+            const res = await fetch('/api/local/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectPath,
+                    fileName: 'productos_db.json',
+                    content: updatedProducts
+                })
+            });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed local save');
+            }
+        } else {
+            if (productId.startsWith('new-')) {
+                const newId = crypto.randomUUID();
+                const insertData = {
+                    ...productData,
+                    id: newId,
+                    created_at: new Date().toISOString()
+                };
+                const { error } = await supabase
+                    .from('productos')
+                    .insert([insertData]);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase
+                    .from('productos')
+                    .update(productData)
+                    .eq('id', productId);
+                if (error) throw error;
+            }
+        }
+    };
+
+    const deleteProductFromDB = async (productId: string) => {
+        if (projectPath) {
+            const currentProducts = await readProductsDB();
+            const updatedProducts = currentProducts.filter(p => p.id !== productId);
+            const res = await fetch('/api/local/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectPath,
+                    fileName: 'productos_db.json',
+                    content: updatedProducts
+                })
+            });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed local delete');
+            }
+        } else {
+            const { error } = await supabase
+                .from('productos')
+                .delete()
+                .eq('id', productId);
+            if (error) throw error;
+        }
+    };
+
     const [pendingProducts, setPendingProducts] = useState<PendingProduct[]>([]);
     const [selectedProduct, setSelectedProduct] = useState<PendingProduct | null>(null);
 
@@ -285,14 +424,7 @@ export default function CatalogHub({
         }
         setLoading(true);
         try {
-            // Ahora solo consultamos 'productos', que contiene tanto los aprobados como los pendientes (travasije)
-            const { data, error } = await supabase
-                .from('productos')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-
+            const data = await readProductsDB();
             const mappedData = (data || []).map(mapProductFromDB);
 
             setPendingProducts(mappedData);
@@ -643,31 +775,7 @@ export default function CatalogHub({
                     return;
                 }
 
-                let uploadedUrl = '';
-                let bucketName = 'imagenes-marketing';
-                let filePath = `${folder}/${fileName}`;
-
-                if (!isEcomoving) {
-                    if (insumoDestination === 'gallery') {
-                        bucketName = 'grilla';
-                        filePath = fileName;
-                    } else {
-                        bucketName = 'hero';
-                        filePath = fileName;
-                    }
-                }
-
-                const { error } = await supabase.storage
-                    .from(bucketName)
-                    .upload(filePath, blob, { contentType: extension === 'jpg' ? 'image/jpeg' : 'image/webp' });
-
-                if (error) throw error;
-
-                const { data: { publicUrl: urlResult } } = supabase.storage
-                    .from(bucketName)
-                    .getPublicUrl(filePath);
-                uploadedUrl = urlResult;
-
+                const uploadedUrl = await uploadToStorage(blob, folder, fileName, extension === 'jpg' ? 'image/jpeg' : 'image/webp');
                 publicUrls.push(uploadedUrl);
             }
 
@@ -680,23 +788,10 @@ export default function CatalogHub({
             if (insumoDestination === 'hero' && insumoOptimizedBlobs.length > 0) {
                 const heroBlob = insumoOptimizedBlobs[0];
                 const grillaFileName = `INSUMO-HERO-${timestamp}-0.webp`;
-                if (isEcomoving) {
-                    const grillaPath = `grilla/${grillaFileName}`;
-                    try {
-                        await supabase.storage
-                            .from('imagenes-marketing')
-                            .upload(grillaPath, heroBlob, { contentType: 'image/webp' });
-                    } catch (grillaErr) {
-                        console.warn('@adn: No se pudo duplicar imagen en grilla:', grillaErr);
-                    }
-                } else {
-                    try {
-                        await supabase.storage
-                            .from('grilla')
-                            .upload(grillaFileName, heroBlob, { contentType: 'image/webp' });
-                    } catch (grillaErr) {
-                        console.warn('No se pudo duplicar imagen en grilla:', grillaErr);
-                    }
+                try {
+                    await uploadToStorage(heroBlob, 'grilla', grillaFileName, 'image/webp');
+                } catch (grillaErr) {
+                    console.warn('@adn: No se pudo duplicar imagen en grilla:', grillaErr);
                 }
             }
 
@@ -1069,17 +1164,7 @@ export default function CatalogHub({
                         }
 
                         const fileName = `PROD-${selectedProduct.sku_externo}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.webp`;
-                        const filePath = `catalogo/${fileName}`;
-
-                        const { error: uploadError } = await supabase.storage
-                            .from('imagenes-marketing')
-                            .upload(filePath, blob, { contentType: 'image/webp' });
-
-                        if (uploadError) throw uploadError;
-
-                        const { data: { publicUrl } } = supabase.storage
-                            .from('imagenes-marketing')
-                            .getPublicUrl(filePath);
+                        const publicUrl = await uploadToStorage(blob, 'catalogo', fileName, 'image/webp');
 
                         finalImageUrls.push(publicUrl);
                         if (imgPath === catalogViewerImage) finalMainImage = publicUrl;
@@ -1118,24 +1203,7 @@ export default function CatalogHub({
                 imagenes_galeria: [finalMainImage, ...finalImageUrls.filter((i: string) => i !== finalMainImage)].filter(Boolean)
             };
 
-            if (selectedProduct.id.startsWith('new-')) {
-                const newId = crypto.randomUUID();
-                const insertData = {
-                    ...productData,
-                    id: newId,
-                    created_at: new Date().toISOString()
-                };
-                const { error } = await supabase
-                    .from('productos')
-                    .insert([insertData]);
-                if (error) throw error;
-            } else {
-                const { error } = await supabase
-                    .from('productos')
-                    .update(productData)
-                    .eq('id', selectedProduct.id);
-                if (error) throw error;
-            }
+            await saveProductToDB(productData, selectedProduct.id);
 
             // Actualizar UI
             fetchPendingProducts(); // Recargar para limpiar
@@ -1388,23 +1456,32 @@ export default function CatalogHub({
         }
         setIsSearchingSku(true);
         try {
-            // Query 1: búsqueda directa por sku_externo con wildcard (robusto)
-            const { data: bySkuData } = await supabase
-                .from('productos')
-                .select('nombre, sku_externo, features')
-                .ilike('sku_externo', `%${skuClean}%`)
-                .limit(1);
-
-            let found = bySkuData && bySkuData.length > 0 ? bySkuData[0] : null;
-
-            // Query 2: fallback por nombre si no encontró por SKU
-            if (!found) {
-                const { data: byNameData } = await supabase
+            let found = null;
+            if (projectPath) {
+                const products = await readProductsDB();
+                found = products.find(p => 
+                    (p.sku_externo && p.sku_externo.toUpperCase().includes(skuClean)) ||
+                    (p.nombre && p.nombre.toUpperCase().includes(skuClean))
+                );
+            } else {
+                // Query 1: búsqueda directa por sku_externo con wildcard (robusto)
+                const { data: bySkuData } = await supabase
                     .from('productos')
                     .select('nombre, sku_externo, features')
-                    .ilike('nombre', `%${skuClean}%`)
+                    .ilike('sku_externo', `%${skuClean}%`)
                     .limit(1);
-                found = byNameData && byNameData.length > 0 ? byNameData[0] : null;
+
+                found = bySkuData && bySkuData.length > 0 ? bySkuData[0] : null;
+
+                // Query 2: fallback por nombre si no encontró por SKU
+                if (!found) {
+                    const { data: byNameData } = await supabase
+                        .from('productos')
+                        .select('nombre, sku_externo, features')
+                        .ilike('nombre', `%${skuClean}%`)
+                        .limit(1);
+                    found = byNameData && byNameData.length > 0 ? byNameData[0] : null;
+                }
             }
 
             if (!found) {
@@ -1442,14 +1519,18 @@ export default function CatalogHub({
 
             if (skuClean) {
                 setAiStatus('⚡ Consultando base de datos...');
-                // PRIMARY INPUT: columna `features` desde Supabase
-                const { data: skuResults } = await supabase
-                    .from('productos')
-                    .select('nombre, sku_externo, features')
-                    .ilike('sku_externo', `%${skuClean}%`)
-                    .limit(1);
-
-                const data = skuResults && skuResults.length > 0 ? skuResults[0] : null;
+                let data = null;
+                if (projectPath) {
+                    const products = await readProductsDB();
+                    data = products.find(p => p.sku_externo && p.sku_externo.toUpperCase().includes(skuClean));
+                } else {
+                    const { data: skuResults } = await supabase
+                        .from('productos')
+                        .select('nombre, sku_externo, features')
+                        .ilike('sku_externo', `%${skuClean}%`)
+                        .limit(1);
+                    data = skuResults && skuResults.length > 0 ? skuResults[0] : null;
+                }
 
                 if (data) {
                     specs = Array.isArray(data.features)
@@ -1646,12 +1727,7 @@ export default function CatalogHub({
 
         if (confirm('¿Estás seguro de que quieres eliminar este producto PERMANENTEMENTE del catálogo?')) {
             try {
-                const { error } = await supabase
-                    .from('productos')
-                    .delete()
-                    .eq('id', selectedProduct.id);
-
-                if (error) throw error;
+                await deleteProductFromDB(selectedProduct.id);
 
                 setPendingProducts(prev => prev.filter(p => p.id !== selectedProduct.id));
                 setSelectedProduct(null);

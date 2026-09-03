@@ -10,7 +10,13 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Missing path or filename' }, { status: 400 });
         }
 
-        const fullPath = path.join(projectPath, fileName);
+        let fullPath = path.join(projectPath, fileName);
+        if (fileName === 'web_content_sync.json' || fileName === 'productos_db.json') {
+            const publicPath = path.join(projectPath, 'public', fileName);
+            if (fs.existsSync(path.join(projectPath, 'public')) || fs.existsSync(publicPath)) {
+                fullPath = publicPath;
+            }
+        }
 
         if (!fs.existsSync(fullPath)) {
             // Si el archivo no existe, devolvemos un estado vacío pero exitoso para no romper el hook

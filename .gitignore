@@ -31,3 +31,6 @@ out/
 # Local sync content
 web_content_sync.json
 public/web_content_sync.json
+.next-dev/
+temp_pptx.zip
+temp_pptx/
